@@ -51,9 +51,10 @@ export const SyncPage: React.FC = () => {
             const manager = new SyncManager(provider);
             await manager.sync();
             setStatus('Google Drive Sync Complete');
-        } catch (e) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (e: any) {
             console.error(e);
-            setStatus('Sync Failed: ' + (e as any).message || String(e));
+            setStatus('Sync Failed: ' + (e.message || String(e)));
         } finally {
             setIsSyncing(false);
         }

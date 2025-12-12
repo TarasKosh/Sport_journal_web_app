@@ -75,15 +75,10 @@ export const ExerciseDetails: React.FC<{ exercise: Exercise, onBack: () => void 
     const epley = (w: number, r: number) => w * (1 + r / 30);
 
     const oneRMData = history?.map(s => epley(s.weight, s.reps)) || [];
-    const volumeData = history?.map(s => s.weight * s.reps) || [];
     // Smoothed or per-workout max? Charting every set is noisy.
 
     // Group by workout (date) and take max 1RM
-    const grouped1RM: number[] = [];
-    if (history) {
-        // logic to compress data points
-        // Simplified: just last 20 sets
-    }
+
 
     return (
         <div className="flex flex-col h-full overflow-y-auto p-4 bg-bg-primary">

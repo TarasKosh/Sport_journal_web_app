@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
-import type { Exercise, MuscleGroup } from '../../types';
+import type { Exercise } from '../../types';
+
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
@@ -23,13 +24,6 @@ export const ExerciseList: React.FC = () => {
         const lower = search.toLowerCase();
         return all.filter(e => e.name.toLowerCase().includes(lower) || e.muscleGroup.includes(lower));
     }, [search]);
-
-    const handleEdit = (ex: Exercise) => {
-        // If propagation, stop it? Card onClick triggers select.
-        // Let's put Edit inside Details or stop propagation here.
-        setEditingExercise(ex);
-        setIsModalOpen(true);
-    };
 
     const handleCreate = () => {
         setEditingExercise(undefined);

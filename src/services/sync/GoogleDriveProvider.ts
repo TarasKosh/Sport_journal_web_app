@@ -6,7 +6,9 @@ declare const gapi: any;
 
 export class GoogleDriveSyncProvider implements SyncProvider {
     name = "Google Drive";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private tokenClient: any;
+
     private accessToken: string | null = null;
     private SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
     private DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
@@ -29,6 +31,7 @@ export class GoogleDriveSyncProvider implements SyncProvider {
             this.tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: this.CLIENT_ID,
                 scope: this.SCOPES,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 callback: (resp: any) => {
                     if (resp.error) {
                         reject(resp);
@@ -57,9 +60,12 @@ export class GoogleDriveSyncProvider implements SyncProvider {
 
     private async loadGapi() {
         // Ensure gapi client is loaded and init
-        if (typeof gapi === 'undefined') throw new Error("GAPI not loaded");
-        await new Promise<void>((resolve) => gapi.load('client', resolve));
-        await gapi.client.init({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (typeof (window as any).gapi === 'undefined') throw new Error("GAPI not loaded");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await new Promise<void>((resolve) => (window as any).gapi.load('client', resolve));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (window as any).gapi.client.init({
             apiKey: this.API_KEY,
             discoveryDocs: [this.DISCOVERY_DOC],
         });
@@ -68,7 +74,8 @@ export class GoogleDriveSyncProvider implements SyncProvider {
     async pull(): Promise<SyncSnapshot | null> {
         await this.loadGapi();
         // 1. Find file in appDataFolder
-        const response = await gapi.client.drive.files.list({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const response = await (window as any).gapi.client.drive.files.list({
             fields: 'files(id, name)',
             spaces: 'appDataFolder',
             q: "name = 'strength-journal-snapshot.json' and trashed = false"
@@ -78,7 +85,8 @@ export class GoogleDriveSyncProvider implements SyncProvider {
         if (files && files.length > 0) {
             const fileId = files[0].id;
             // 2. Download content
-            const fileContent = await gapi.client.drive.files.get({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const fileContent = await (window as any).gapi.client.drive.files.get({
                 fileId: fileId,
                 alt: 'media'
             });
@@ -93,7 +101,8 @@ export class GoogleDriveSyncProvider implements SyncProvider {
         const blob = new Blob([fileContent], { type: 'application/json' });
 
         // Check if exists
-        const listResp = await gapi.client.drive.files.list({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const listResp = await (window as any).gapi.client.drive.files.list({
             fields: 'files(id, name)',
             spaces: 'appDataFolder',
             q: "name = 'strength-journal-snapshot.json' and trashed = false"
@@ -104,7 +113,8 @@ export class GoogleDriveSyncProvider implements SyncProvider {
         if (files && files.length > 0) {
             // Update
             const fileId = files[0].id;
-            await gapi.client.request({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (window as any).gapi.client.request({
                 path: `/upload/drive/v3/files/${fileId}`,
                 method: 'PATCH',
                 params: { uploadType: 'media' },

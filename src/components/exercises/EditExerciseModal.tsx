@@ -19,13 +19,15 @@ export const EditExerciseModal: React.FC<EditExerciseModalProps> = ({ isOpen, on
 
     useEffect(() => {
         if (exercise) {
-            setName(exercise.name);
-            setMuscle(exercise.muscleGroup);
+            // Only update if changed to avoid strict mode double-invocations or redundant updates
+            setName(prev => prev !== exercise.name ? exercise.name : prev);
+            setMuscle(prev => prev !== exercise.muscleGroup ? exercise.muscleGroup : prev);
         } else {
             setName('');
             setMuscle('other');
         }
-    }, [exercise, isOpen]);
+    }, [exercise]);
+
 
     const handleSave = async () => {
         if (!name.trim()) return;

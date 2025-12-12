@@ -47,6 +47,7 @@ export class SyncManager {
             await this.mergeTable(db.exercises, remote.data.exercises);
             await this.mergeTable(db.workouts, remote.data.workouts);
             await this.mergeTable(db.workoutExercises, remote.data.workoutExercises);
+
             await this.mergeTable(db.sets, remote.data.sets);
             // Conflicts are additive usually, or we just keep local? Let's merge generic.
             await this.mergeTable(db.conflictLog, remote.data.conflictLog || []);

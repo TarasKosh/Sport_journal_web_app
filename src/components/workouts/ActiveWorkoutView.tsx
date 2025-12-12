@@ -3,7 +3,8 @@ import type { Workout, WorkoutExercise } from '../../types';
 import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Button } from '../common/Button';
-import { Plus, CheckCircle, MoreVertical, Trash2 } from 'lucide-react';
+import { Plus, CheckCircle, Trash2 } from 'lucide-react';
+
 import { ExercisePickerModal } from './ExercisePickerModal';
 import { v4 as uuidv4 } from 'uuid';
 import { SetList } from './SetList'; // We'll implement this next
