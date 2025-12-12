@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { PlusCircle, History, Dumbbell, BarChart2, Settings } from 'lucide-react';
 import clsx from 'clsx';
-import styles from './Layout.module.css'; // Using CSS modules for complex layout if needed, or inline for simplicity. I'll use inline/global classes for speed where appropriate or standard CSS.
+
 
 // Simple CSS Module emulation or just inline styles for the Nav
 const NavItem = ({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) => (
