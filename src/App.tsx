@@ -1,14 +1,11 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ExerciseList } from './components/exercises/ExerciseList';
 import { WorkoutPage } from './components/workouts/WorkoutPage';
 import { HistoryList } from './components/history/HistoryList';
 
-// Placeholder Pages
-const HistoryPage = () => <div className="p-4">History Page</div>;
-// ExercisesPage replaced by ExerciseList
-const StatsPage = () => <div className="p-4">Stats Page</div>;
+import { StatsPage } from './components/stats/StatsPage';
 import { SettingsPage } from './components/settings/SettingsPage';
+import { AppShell } from './components/layout/AppShell';
 
 function App() {
   return (
