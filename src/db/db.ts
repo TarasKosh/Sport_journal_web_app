@@ -1,11 +1,14 @@
-import Dexie, { Table } from 'dexie';
-import {
+import Dexie from 'dexie';
+import type { Table } from 'dexie';
+import type {
     Exercise,
     Workout,
     WorkoutExercise,
     SetEntry,
     Settings,
-    ConflictLog,
+    ConflictLog
+} from '../types';
+import {
     MassUnit,
     RPEType
 } from '../types';
@@ -58,11 +61,11 @@ export class AppDatabase extends Dexie {
             { name: 'Deadlift (Barbell)', muscleGroup: 'back', movementType: 'compound' },
             { name: 'Overhead Press (Barbell)', muscleGroup: 'shoulders', movementType: 'compound' },
             { name: 'Pull Up', muscleGroup: 'back', movementType: 'compound' },
-            { name: 'Dumbbell Row', muscleGroup: 'back', movementType: 'compound' },
-            { name: 'Lunges', muscleGroup: 'legs', movementType: 'compound' },
+            { name: 'Dumbbell Row', muscleGroup: 'back', movementType: 'compound', isUnilateral: true },
+            { name: 'Lunges', muscleGroup: 'legs', movementType: 'compound', isUnilateral: true },
             { name: 'Leg Press', muscleGroup: 'legs', movementType: 'compound' },
             { name: 'Lat Pulldown', muscleGroup: 'back', movementType: 'isolation' },
-            { name: 'Bicep Curl (Dumbbell)', muscleGroup: 'arms', movementType: 'isolation' },
+            { name: 'Bicep Curl (Dumbbell)', muscleGroup: 'arms', movementType: 'isolation', isUnilateral: true },
             { name: 'Tricep Extension', muscleGroup: 'arms', movementType: 'isolation' },
             { name: 'Plank', muscleGroup: 'core', movementType: 'isometric' },
         ];

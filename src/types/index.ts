@@ -1,14 +1,16 @@
 export type UUID = string;
 
-export enum MassUnit {
-    KG = 'kg',
-    LB = 'lb',
-}
+export const MassUnit = {
+    KG: 'kg',
+    LB: 'lb',
+} as const;
+export type MassUnit = typeof MassUnit[keyof typeof MassUnit];
 
-export enum RPEType {
-    RPE = 'rpe', // Rate of Perceived Exertion (1-10)
-    RIR = 'rir', // Reps In Reserve
-}
+export const RPEType = {
+    RPE: 'rpe', // Rate of Perceived Exertion (1-10)
+    RIR: 'rir', // Reps In Reserve
+} as const;
+export type RPEType = typeof RPEType[keyof typeof RPEType];
 
 export type MuscleGroup =
     | 'chest' | 'back' | 'shoulders' | 'legs' | 'arms' | 'core' | 'full_body' | 'cardio' | 'other';
@@ -38,6 +40,9 @@ export interface Exercise {
     // Sync Meta
     updatedAt: number;
     deletedAt?: number;
+
+    // Config
+    isUnilateral?: boolean;
 }
 
 export interface Workout {
@@ -81,6 +86,8 @@ export interface SetEntry {
     restSec?: number;
     isWarmup: boolean;
     isFailure: boolean;
+    failureRep?: number;
+    side?: 'left' | 'right';
     notes?: string;
 
     // Sync Meta

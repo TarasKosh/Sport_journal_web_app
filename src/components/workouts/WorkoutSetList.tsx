@@ -1,5 +1,5 @@
 import React from 'react';
-import type { WorkoutExercise, SetEntry } from '../../types';
+import type { WorkoutExercise } from '../../types';
 import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Button } from '../common/Button';
@@ -11,9 +11,10 @@ import { SetItem } from './SetItem'; // We will create this next
 interface SetListProps {
     workoutExercise: WorkoutExercise;
     exerciseName: string;
+    isUnilateral?: boolean;
 }
 
-export const SetList: React.FC<SetListProps> = ({ workoutExercise, exerciseName }) => {
+export const SetList: React.FC<SetListProps> = ({ workoutExercise, exerciseName, isUnilateral }) => {
     const sets = useLiveQuery(async () => {
         const s = await db.sets.where('workoutExerciseId').equals(workoutExercise.uuid).toArray();
         return s.sort((a, b) => a.order - b.order);
@@ -46,17 +47,10 @@ export const SetList: React.FC<SetListProps> = ({ workoutExercise, exerciseName 
                 <button className="text-text-secondary"><MoreHorizontal size={18} /></button>
             </div>
 
-            <div className="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-2 mb-1 px-1 text-xs text-text-secondary uppercase font-semibold text-center">
-                <div className="w-6">#</div>
-                <div>kg</div>
-                <div>Reps</div>
-                <div>RPE</div>
-                <div className="w-8"></div>
-            </div>
-
+            {/* Header row removed - moving labels to items for better UX */}
             <div className="flex flex-col gap-1">
                 {sets?.map((set, index) => (
-                    <SetItem key={set.uuid} set={set} index={index} />
+                    <SetItem key={set.uuid} set={set} index={index} isUnilateral={isUnilateral} />
                 ))}
             </div>
 

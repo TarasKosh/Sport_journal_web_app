@@ -7,7 +7,7 @@ import { Plus, CheckCircle, Trash2 } from 'lucide-react';
 
 import { ExercisePickerModal } from './ExercisePickerModal';
 import { v4 as uuidv4 } from 'uuid';
-import { SetList } from './SetList'; // We'll implement this next
+import { SetList } from './WorkoutSetList';
 
 export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) => {
     const [isPickerOpen, setIsPickerOpen] = useState(false);
@@ -88,7 +88,7 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) =
                 <Button
                     variant="secondary"
                     fullWidth
-                    className="py-4 border-2 border-dashed border-border bg-transparent hover:bg-bg-tertiary"
+                    className="py-4 border-2 border-dashed border-border bg-transparent hover:bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors"
                     onClick={() => setIsPickerOpen(true)}
                 >
                     <Plus size={20} className="mr-2" /> Add Exercise
@@ -117,6 +117,6 @@ const WorkoutExerciseItem: React.FC<{ workoutExercise: WorkoutExercise }> = ({ w
     if (!exercise) return <div className="animate-pulse bg-bg-tertiary h-20 rounded-lg"></div>;
 
     return (
-        <SetList workoutExercise={workoutExercise} exerciseName={exercise.name} />
+        <SetList workoutExercise={workoutExercise} exerciseName={exercise.name} isUnilateral={exercise.isUnilateral} />
     );
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { Button } from '../common/Button';
@@ -8,17 +8,11 @@ import { ActiveWorkoutView } from './ActiveWorkoutView';
 
 export const WorkoutPage: React.FC = () => {
     // Query for an active workout (endedAt is undefined or null)
-    // We use toArray and find because simple 'where' with undefined is tricky in some Dexie versions, 
-    // but Filter is safe.
-    const activeWorkout = useLiveQuery(async () => {
-        // Optimization: In real app, we might want an index on startedAt/endedAt
-        // But since there's usually 0 or 1 active workout, filtering all workouts is not efficient if history is huge.
-        // Better to have 'active' table or index.
-        // For MVP: filter.
-        const active = await db.workouts
+    // Query for active workouts (should be 0 or 1)
+    const activeWorkouts = useLiveQuery(async () => {
+        return await db.workouts
             .filter(w => !w.endedAt)
-            .first();
-        return active;
+            .toArray();
     });
 
     const handleStartWorkout = async () => {
@@ -33,12 +27,18 @@ export const WorkoutPage: React.FC = () => {
         }
     };
 
+    if (activeWorkouts === undefined) {
+        return <div className="p-4 text-center mt-10">Loading...</div>;
+    }
+
+    const activeWorkout = activeWorkouts[0];
+
     if (activeWorkout) {
         return <ActiveWorkoutView workout={activeWorkout} />;
     }
 
     return (
-        <div className="flex flex-col items-center justify-center h-full p-6 text-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
+        <div className="flex flex-col items-center justify-center h-full p-6 text-center space-y-6">
             <div className="bg-bg-tertiary p-8 rounded-full">
                 <Play size={48} className="text-accent ml-2" />
             </div>
