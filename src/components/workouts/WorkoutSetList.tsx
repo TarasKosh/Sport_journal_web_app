@@ -37,14 +37,7 @@ export const SetList: React.FC<SetListProps> = ({ workoutExercise, exerciseName,
         });
     };
 
-    // Grid for the Sets List:
-    // # | KG | Reps | RPE | Actions
-    const gridStyle = {
-        display: 'grid',
-        gridTemplateColumns: '32px 1fr 1fr 1fr 32px',
-        gap: '12px',
-        alignItems: 'center'
-    };
+
 
     return (
         <Card className="flex flex-col bg-bg-secondary p-0 rounded-xl border border-border/60 shadow-md overflow-hidden animate-in fade-in slide-in-from-bottom-10">
@@ -83,23 +76,12 @@ export const SetList: React.FC<SetListProps> = ({ workoutExercise, exerciseName,
                 </div>
             </div>
 
-            {/* Sets Header - Styled to look like the "rows" in the reference */}
-            {sets && sets.length > 0 && (
-                <div className="px-4 pt-4 pb-2 bg-bg-tertiary/10">
-                    <div style={gridStyle} className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider text-center select-none">
-                        <div>#</div>
-                        <div>kg</div>
-                        <div>Reps</div>
-                        <div>RPE</div>
-                        <div></div>
-                    </div>
-                </div>
-            )}
+
 
             {/* Sets List */}
             <div className="flex flex-col px-4 pb-4 gap-1 bg-bg-tertiary/10">
                 {sets?.map((set, index) => (
-                    <SetItem key={set.uuid} set={set} index={index} isUnilateral={isUnilateral} gridStyle={gridStyle} />
+                    <SetItem key={set.uuid} set={set} index={index} isUnilateral={isUnilateral} />
                 ))}
 
                 {/* Add Set Button - Prominent and visible */}

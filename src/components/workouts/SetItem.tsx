@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { SetEntry } from '../../types';
 import { db } from '../../db/db';
-import { Trash2, AlertCircle, CornerDownRight } from 'lucide-react';
+import { Trash2, CornerDownRight, Minus, Plus } from 'lucide-react';
 import clsx from 'clsx';
 import { useDebounce } from '../../hooks/useDebounce';
 
@@ -9,10 +9,9 @@ interface SetItemProps {
     set: SetEntry;
     index: number;
     isUnilateral?: boolean;
-    gridStyle: React.CSSProperties;
 }
 
-export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral, gridStyle }) => {
+export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral }) => {
     const [weight, setWeight] = useState(set.weight.toString());
     const [reps, setReps] = useState(set.reps.toString());
     const [rpe, setRpe] = useState(set.rpe?.toString() || '');
@@ -65,115 +64,159 @@ export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral, grid
         await db.sets.delete(set.id!);
     };
 
-    // Styling - Ghost Inputs -> Look like text but editable.
-    // Background transparent, border transparent, underline on focus? Or just box.
-    // matching the clean table look.
-    const inputClass = "w-full bg-transparent border-b border-border/50 focus:border-accent hover:bg-bg-tertiary/50 rounded-lg h-10 text-center text-lg font-bold outline-none transition-all placeholder:text-text-tertiary/20 text-text-primary focus:bg-bg-tertiary focus:shadow-sm";
-    const activeRowClass = isFailure ? "bg-danger/5 rounded border-l-2 border-l-danger" : "hover:bg-bg-secondary/30 rounded border-l-2 border-l-transparent";
+    const activeRowClass = isFailure ? "rounded border-l-4 border-l-danger" : "hover:bg-bg-secondary/30 rounded border-l-4 border-l-transparent";
+
+    // Input field component with horizontal +/- buttons on the right
+    const InputWithButtons = ({ 
+        value, 
+        onChange, 
+        onIncrement, 
+        onDecrement, 
+        placeholder = "0",
+        isDanger = false 
+    }: { 
+        value: string; 
+        onChange: (val: string) => void; 
+        onIncrement: () => void; 
+        onDecrement: () => void; 
+        placeholder?: string;
+        isDanger?: boolean;
+    }) => (
+        <div className={clsx(
+            "flex items-center border-2 rounded-xl overflow-hidden transition-all h-14 w-full",
+            isDanger ? "border-danger bg-bg-secondary" : "border-border bg-bg-secondary hover:border-accent/40"
+        )}>
+            <input
+                type="number"
+                inputMode="decimal"
+                value={value}
+                onChange={e => onChange(e.target.value)}
+                className={clsx(
+                    "flex-1 bg-transparent text-center text-2xl font-bold outline-none px-2 hide-number-arrows min-w-0",
+                    isDanger ? "text-danger placeholder:text-danger/30" : "text-text-primary placeholder:text-text-tertiary/30"
+                )}
+                placeholder={placeholder}
+            />
+            <div className="flex items-center h-full border-l-2 border-border flex-shrink-0">
+                <button
+                    onClick={onDecrement}
+                    className={clsx(
+                        "h-full px-3 transition-colors flex items-center justify-center border-r-2 border-border",
+                        isDanger ? "hover:bg-danger/10 active:bg-danger/20" : "hover:bg-accent/10 active:bg-accent/20"
+                    )}
+                >
+                    <Minus size={18} className={isDanger ? "text-danger" : "text-text-secondary"} strokeWidth={3} />
+                </button>
+                <button
+                    onClick={onIncrement}
+                    className={clsx(
+                        "h-full px-3 transition-colors flex items-center justify-center",
+                        isDanger ? "hover:bg-danger/10 active:bg-danger/20" : "hover:bg-accent/10 active:bg-accent/20"
+                    )}
+                >
+                    <Plus size={18} className={isDanger ? "text-danger" : "text-text-secondary"} strokeWidth={3} />
+                </button>
+            </div>
+        </div>
+    );
 
     return (
-        <div className={clsx("flex flex-col py-1 transition-colors", activeRowClass)}>
-
-            {/* The GRID ROW */}
-            <div style={gridStyle}>
-
-                {/* 1. Set Number + Side */}
-                <div className="flex flex-col items-center justify-center gap-0.5">
-                    <div className="text-sm font-bold text-text-tertiary">
+        <div className={clsx("py-2 px-2 transition-colors", activeRowClass)}>
+            {/* Header: Set Number + Delete Button */}
+            <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                    <div className="text-xl font-bold text-text-tertiary">
                         {index + 1}
                     </div>
                     {isUnilateral && (
                         <button
                             onClick={handleSideChange}
                             className={clsx(
-                                "text-[10px] uppercase font-bold leading-none px-1 rounded cursor-pointer select-none transition-all w-5 text-center",
-                                side === 'left' ? "text-accent bg-accent/10" : "text-text-tertiary bg-text-tertiary/10 scale-90"
+                                "text-[10px] uppercase font-bold leading-none px-1.5 py-0.5 rounded cursor-pointer select-none transition-all",
+                                side === 'left' ? "text-accent bg-accent/10" : "text-text-tertiary bg-text-tertiary/10"
                             )}
                         >
                             {side === 'left' ? 'L' : 'R'}
                         </button>
                     )}
                 </div>
+                <button
+                    onClick={handleDelete}
+                    className="text-text-tertiary hover:text-danger transition-colors opacity-60 hover:opacity-100"
+                >
+                    <Trash2 size={18} />
+                </button>
+            </div>
 
-                {/* 2. KG */}
-                <div className="relative group">
-                    <input
-                        type="number"
-                        inputMode="decimal"
+            {/* Input Fields - Responsive Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {/* KG */}
+                <div>
+                    <div className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider mb-1 text-center">KG</div>
+                    <InputWithButtons
                         value={weight}
-                        onChange={e => setWeight(e.target.value)}
-                        className={inputClass}
-                        placeholder="0"
+                        onChange={setWeight}
+                        onIncrement={() => setWeight((Number(weight) + 2.5).toString())}
+                        onDecrement={() => setWeight(Math.max(0, Number(weight) - 2.5).toString())}
                     />
                 </div>
 
-                {/* 3. Reps */}
-                <div className="relative group">
-                    <input
-                        type="number"
-                        inputMode="numeric"
+                {/* Reps */}
+                <div>
+                    <div className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider mb-1 text-center">REPS</div>
+                    <InputWithButtons
                         value={reps}
-                        onChange={e => setReps(e.target.value)}
-                        className={clsx(inputClass, isFailure && "text-danger font-bold")}
-                        placeholder="0"
+                        onChange={setReps}
+                        onIncrement={() => setReps((Number(reps) + 1).toString())}
+                        onDecrement={() => setReps(Math.max(0, Number(reps) - 1).toString())}
+                        isDanger={isFailure}
                     />
                 </div>
 
-                {/* 4. RPE */}
-                <div className="relative group">
-                    <input
-                        type="number"
-                        inputMode="decimal"
+                {/* RPE */}
+                <div>
+                    <div className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider mb-1 text-center">RPE</div>
+                    <InputWithButtons
                         value={rpe}
-                        onChange={e => setRpe(e.target.value)}
-                        className={inputClass}
+                        onChange={setRpe}
+                        onIncrement={() => setRpe(rpe ? Math.min(10, Number(rpe) + 0.5).toString() : '10')}
+                        onDecrement={() => setRpe(rpe ? Math.max(0, Number(rpe) - 0.5).toString() : '10')}
                         placeholder="-"
-                        max={10}
                     />
-                </div>
-
-                {/* 5. Controls */}
-                <div className="flex flex-col items-center justify-center gap-1">
-                    <button
-                        onClick={toggleFailure}
-                        className={clsx(
-                            "flex items-center justify-center transition-all w-8 h-8 rounded-full",
-                            isFailure ? "bg-danger text-white shadow-sm scale-100" : "text-text-tertiary hover:bg-bg-tertiary hover:text-text-secondary opacity-60 hover:opacity-100 scale-90 hover:scale-100"
-                        )}
-                        title="Toggle Failure"
-                    >
-                        <AlertCircle size={16} fill={isFailure ? "currentColor" : "none"} />
-                    </button>
                 </div>
             </div>
 
-            {/* FAILURE EXPANDED */}
+            {/* Fail Checkbox */}
+            <div className="mt-2">
+                <button
+                    onClick={toggleFailure}
+                    className={clsx(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all font-medium text-xs",
+                        isFailure 
+                            ? "bg-red-600 border-2 border-red-700 text-white shadow-lg" 
+                            : "border-2 border-border bg-white text-text-secondary hover:border-accent hover:bg-accent/5 hover:text-accent"
+                    )}
+                >
+                    <span className="text-sm">{isFailure ? '✕' : '✓'}</span>
+                    <span>{isFailure ? 'Muscle Failure' : 'Muscle Failure'}</span>
+                </button>
+            </div>
+
+            {/* FAILURE ROW */}
             {isFailure && (
-                <div className="px-2 mt-2 mb-1">
-                    <div style={gridStyle} className="items-center">
-                        <div className="flex items-center justify-center">
-                            <CornerDownRight size={14} className="text-danger/60" />
-                        </div>
-                        <div className="col-span-2 flex items-center gap-2">
-                            <span className="text-xs text-danger/80 font-semibold uppercase tracking-wide whitespace-nowrap">Failed @</span>
-                            <input
-                                type="number"
-                                inputMode="numeric"
-                                value={failureRep}
-                                onChange={e => setFailureRep(e.target.value)}
-                                className="w-full bg-transparent border-b border-danger/40 focus:border-danger hover:bg-danger/5 rounded-lg h-10 text-center text-lg font-bold outline-none transition-all text-danger focus:bg-danger/5 focus:shadow-sm"
-                                placeholder="0"
-                            />
-                        </div>
-                        <div></div>
-                        <div className="flex items-center justify-center">
-                            <button
-                                onClick={handleDelete}
-                                className="text-text-tertiary hover:text-danger transition-colors opacity-60 hover:opacity-100"
-                            >
-                                <Trash2 size={16} />
-                            </button>
-                        </div>
+                <div className="flex items-center gap-2 mt-2">
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        <CornerDownRight size={14} className="text-danger/60" />
+                        <span className="text-xs text-danger/80 font-semibold uppercase tracking-wide whitespace-nowrap">Failed @</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <InputWithButtons
+                            value={failureRep}
+                            onChange={setFailureRep}
+                            onIncrement={() => setFailureRep((Number(failureRep) + 1).toString())}
+                            onDecrement={() => setFailureRep(Math.max(0, Number(failureRep) - 1).toString())}
+                            isDanger={true}
+                        />
                     </div>
                 </div>
             )}

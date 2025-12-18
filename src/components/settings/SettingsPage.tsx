@@ -55,6 +55,24 @@ export const SettingsPage: React.FC = () => {
 
             <SyncPage />
 
+            <Card className="bg-danger/10 border-2 border-danger/30">
+                <h3 className="text-sm font-bold text-danger mb-2">Danger Zone</h3>
+                <button
+                    onClick={async () => {
+                        if (confirm('Are you sure you want to delete ALL data? This cannot be undone!')) {
+                            await db.delete();
+                            window.location.reload();
+                        }
+                    }}
+                    className="w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 active:bg-red-800 transition-colors shadow-md"
+                >
+                    🗑️ Reset Database
+                </button>
+                <p className="text-xs text-text-secondary mt-2">
+                    This will delete all workouts, exercises, and settings. The database will be recreated with default exercises.
+                </p>
+            </Card>
+
             <Card className="bg-bg-tertiary/50">
                 <h3 className="text-sm font-bold opacity-50 mb-2">About</h3>
                 <p className="text-xs text-text-secondary">

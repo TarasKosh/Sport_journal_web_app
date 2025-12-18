@@ -68,6 +68,10 @@ export class AppDatabase extends Dexie {
             { name: 'Bicep Curl (Dumbbell)', muscleGroup: 'arms', movementType: 'isolation', isUnilateral: true },
             { name: 'Tricep Extension', muscleGroup: 'arms', movementType: 'isolation' },
             { name: 'Plank', muscleGroup: 'core', movementType: 'isometric' },
+            { name: 'Sit-Up', muscleGroup: 'core', movementType: 'compound' },
+            { name: 'Bulgarian Split Squat', muscleGroup: 'legs', movementType: 'compound', isUnilateral: true },
+            { name: 'Dips', muscleGroup: 'chest', movementType: 'compound' },
+            { name: 'Calf Raise', muscleGroup: 'legs', movementType: 'isolation' },
         ];
 
         const now = Date.now();
