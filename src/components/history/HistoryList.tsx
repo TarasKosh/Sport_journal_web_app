@@ -7,17 +7,19 @@ import { Calendar } from 'lucide-react';
 export const HistoryList: React.FC = () => {
     // Fetch completed workouts descending
     const workouts = useLiveQuery(async () => {
-        // We need an index on startedAt to sort efficiently. 
-        // Our schema has startedAt.
-        // reverse() to show newest first.
         return await db.workouts
-            .where('startedAt').above(0) // Just to get a collection to sort? Or use orderBy directly
-            .and(w => !!w.endedAt) // Filter completed
-            .reverse() // Dexie collection reverse is not always sorting by index unless specified
-            .sortBy('startedAt');
+            .orderBy('workoutDay')
+            .reverse()
+            .filter(w => !!w.endedAt)
+            .toArray();
     });
 
     if (!workouts) return <div className="p-4 text-center">Loading...</div>;
+
+    const workoutDayToDate = (workoutDay: string) => {
+        const [y, m, d] = workoutDay.split('-').map(Number);
+        return new Date(y, (m || 1) - 1, d || 1);
+    };
 
     return (
         <div className="flex flex-col gap-3 p-4 pb-20">
@@ -31,7 +33,7 @@ export const HistoryList: React.FC = () => {
                 <Card key={workout.uuid} className="flex flex-col gap-2">
                     <div className="flex items-center gap-2 text-text-secondary text-sm">
                         <Calendar size={14} />
-                        <span>{new Date(workout.startedAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                        <span>{workoutDayToDate(workout.workoutDay).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}</span>
                     </div>
                     <div className="flex justify-between items-center">
                         <h3 className="font-bold text-lg">{workout.title || "Workout"}</h3>

@@ -17,9 +17,14 @@ export const StatsPage: React.FC = () => {
         const totalTonnage = sets.reduce((acc, s) => acc + (s.weight * s.reps), 0);
 
         // This Week
+        const toDayString = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const now = new Date();
-        const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay())).setHours(0, 0, 0, 0);
-        const thisWeekWorkouts = completedWorkouts.filter(w => w.startedAt >= startOfWeek);
+        const start = new Date(now);
+        start.setDate(start.getDate() - start.getDay());
+        start.setHours(0, 0, 0, 0);
+        const startDay = toDayString(start);
+
+        const thisWeekWorkouts = completedWorkouts.filter(w => w.workoutDay >= startDay);
 
         return {
             totalWorkouts,

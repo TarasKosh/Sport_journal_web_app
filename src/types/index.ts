@@ -49,6 +49,7 @@ export interface Workout {
     id?: number;
     uuid: UUID;
     startedAt: number;
+    workoutDay: string;
     endedAt?: number;
     title?: string; // Optional custom title
     tags?: string[];

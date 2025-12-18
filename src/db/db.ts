@@ -58,9 +58,32 @@ export class AppDatabase extends Dexie {
             });
         });
 
-        this.on('populate', () => {
-            this.seedData();
+        this.version(3).stores({
+            settings: '++id',
+            exercises: '++id, &uuid, name, muscleGroup, updatedAt, deletedAt',
+            workouts: '++id, &uuid, startedAt, endedAt, workoutDay, updatedAt, deletedAt',
+            workoutExercises: '++id, &uuid, workoutId, exerciseId, updatedAt, deletedAt',
+            sets: '++id, &uuid, workoutExerciseId, updatedAt, deletedAt',
+            conflictLog: '++id, &uuid, entityType, entityId',
+            workoutTemplates: '++id, &uuid, name, isCustom, updatedAt, deletedAt'
+        }).upgrade(async (tx) => {
+            const toDayString = (ts: number) => {
+                const d = new Date(ts);
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${y}-${m}-${day}`;
+            };
+
+            await tx.table('workouts').toCollection().modify((w: any) => {
+                if (!w.workoutDay) {
+                    const ts = typeof w.startedAt === 'number' ? w.startedAt : Date.now();
+                    w.workoutDay = toDayString(ts);
+                }
+            });
         });
+
+        this.on('populate', () => this.seedData());
     }
 
     async seedData() {

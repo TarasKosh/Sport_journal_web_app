@@ -2,7 +2,7 @@ import { db } from '../../db/db';
 import type { SyncSnapshot, SyncProvider } from './types';
 import { v4 as uuidv4 } from 'uuid';
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 export class SyncManager {
     private provider: SyncProvider;
