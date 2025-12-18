@@ -20,13 +20,6 @@ export const StatsPage: React.FC = () => {
         const now = new Date();
         const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay())).setHours(0, 0, 0, 0);
         const thisWeekWorkouts = completedWorkouts.filter(w => w.startedAt >= startOfWeek);
-        const thisWeekTonnage = sets.filter(s => {
-            // finding set date is expensive without join. 
-            // Approximation: average tonnage per workout * week workouts?
-            // Or join efficiently.
-            // Let's just say "Workouts this week":
-            return true;
-        }).length; // placeholder
 
         return {
             totalWorkouts,

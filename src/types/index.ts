@@ -113,6 +113,7 @@ export interface WorkoutTemplate {
     name: string;
     description?: string;
     exercises: UUID[]; // Array of exercise UUIDs in order
+    isCustom: boolean;
     
     // Sync Meta
     updatedAt: number;

@@ -42,6 +42,22 @@ export class AppDatabase extends Dexie {
             workoutTemplates: '++id, &uuid, name, updatedAt, deletedAt'
         });
 
+        this.version(2).stores({
+            settings: '++id',
+            exercises: '++id, &uuid, name, muscleGroup, updatedAt, deletedAt',
+            workouts: '++id, &uuid, startedAt, endedAt, updatedAt, deletedAt',
+            workoutExercises: '++id, &uuid, workoutId, exerciseId, updatedAt, deletedAt',
+            sets: '++id, &uuid, workoutExerciseId, updatedAt, deletedAt',
+            conflictLog: '++id, &uuid, entityType, entityId',
+            workoutTemplates: '++id, &uuid, name, isCustom, updatedAt, deletedAt'
+        }).upgrade(async (tx) => {
+            await tx.table('workoutTemplates').toCollection().modify((t: any) => {
+                if (typeof t.isCustom !== 'boolean') {
+                    t.isCustom = false;
+                }
+            });
+        });
+
         this.on('populate', () => {
             this.seedData();
         });
@@ -119,6 +135,7 @@ export class AppDatabase extends Dexie {
             defaultTemplates.map(template => ({
                 ...template,
                 uuid: uuidv4(),
+                isCustom: false,
                 updatedAt: now
             } as WorkoutTemplate))
         );

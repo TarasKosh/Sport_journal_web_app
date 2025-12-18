@@ -1,4 +1,4 @@
-import type { Exercise, Workout, WorkoutExercise, SetEntry, Settings, ConflictLog } from '../../types';
+import type { Exercise, Workout, WorkoutExercise, SetEntry, Settings, ConflictLog, WorkoutTemplate } from '../../types';
 
 export interface SyncSnapshot {
     schemaVersion: number;
@@ -10,6 +10,7 @@ export interface SyncSnapshot {
         workouts: Workout[];
         workoutExercises: WorkoutExercise[];
         sets: SetEntry[];
+        workoutTemplates?: WorkoutTemplate[];
         conflictLog?: ConflictLog[];
     };
 }

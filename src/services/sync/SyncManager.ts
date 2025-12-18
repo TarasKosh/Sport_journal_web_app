@@ -2,7 +2,7 @@ import { db } from '../../db/db';
 import type { SyncSnapshot, SyncProvider } from './types';
 import { v4 as uuidv4 } from 'uuid';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 export class SyncManager {
     private provider: SyncProvider;
@@ -20,6 +20,7 @@ export class SyncManager {
         const workouts = await db.workouts.toArray();
         const workoutExercises = await db.workoutExercises.toArray();
         const sets = await db.sets.toArray();
+        const workoutTemplates = await db.workoutTemplates.toArray();
         const conflictLog = await db.conflictLog.toArray();
 
         return {
@@ -32,6 +33,7 @@ export class SyncManager {
                 workouts,
                 workoutExercises,
                 sets,
+                workoutTemplates,
                 conflictLog
             }
         };
@@ -42,13 +44,14 @@ export class SyncManager {
             throw new Error(`Schema version mismatch. Local: ${SCHEMA_VERSION}, Remote: ${remote.schemaVersion}`);
         }
 
-        await db.transaction('rw', [db.settings, db.exercises, db.workouts, db.workoutExercises, db.sets, db.conflictLog], async () => {
+        await db.transaction('rw', [db.settings, db.exercises, db.workouts, db.workoutExercises, db.sets, db.workoutTemplates, db.conflictLog], async () => {
             await this.mergeTable(db.settings, remote.data.settings);
             await this.mergeTable(db.exercises, remote.data.exercises);
             await this.mergeTable(db.workouts, remote.data.workouts);
             await this.mergeTable(db.workoutExercises, remote.data.workoutExercises);
 
             await this.mergeTable(db.sets, remote.data.sets);
+            await this.mergeTable(db.workoutTemplates, remote.data.workoutTemplates || []);
             // Conflicts are additive usually, or we just keep local? Let's merge generic.
             await this.mergeTable(db.conflictLog, remote.data.conflictLog || []);
         });
