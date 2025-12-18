@@ -106,3 +106,15 @@ export interface ConflictLog {
     resolution?: 'local' | 'remote' | 'manual';
     snapshot?: any; // JSON snapshot of the conflict
 }
+
+export interface WorkoutTemplate {
+    id?: number;
+    uuid: UUID;
+    name: string;
+    description?: string;
+    exercises: UUID[]; // Array of exercise UUIDs in order
+    
+    // Sync Meta
+    updatedAt: number;
+    deletedAt?: number;
+}

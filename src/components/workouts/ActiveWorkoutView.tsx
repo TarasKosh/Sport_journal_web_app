@@ -6,11 +6,13 @@ import { Button } from '../common/Button';
 import { Plus, CheckCircle, Trash2, Clock, Dumbbell } from 'lucide-react';
 
 import { ExercisePickerModal } from './ExercisePickerModal';
+import { TemplatePickerModal } from './TemplatePickerModal';
 import { v4 as uuidv4 } from 'uuid';
 import { SetList } from './WorkoutSetList';
 
 export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) => {
     const [isPickerOpen, setIsPickerOpen] = useState(false);
+    const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
     const [workoutDuration, setWorkoutDuration] = useState('00:00');
 
     // Update workout duration every second
@@ -42,6 +44,30 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) =
             setIsPickerOpen(false);
         } catch (e) {
             console.error("Failed to add exercise", e);
+        }
+    };
+
+    const handleAddTemplate = async (templateId: string) => {
+        try {
+            const template = await db.workoutTemplates.where('uuid').equals(templateId).first();
+            if (!template) return;
+
+            const count = await db.workoutExercises.where('workoutId').equals(workout.uuid).count();
+            
+            // Add all exercises from template
+            for (let i = 0; i < template.exercises.length; i++) {
+                await db.workoutExercises.add({
+                    uuid: uuidv4(),
+                    workoutId: workout.uuid,
+                    exerciseId: template.exercises[i],
+                    order: count + i,
+                    updatedAt: Date.now()
+                });
+            }
+            
+            setIsTemplatePickerOpen(false);
+        } catch (e) {
+            console.error("Failed to add template", e);
         }
     };
 
@@ -148,18 +174,32 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) =
                     />
                 ))}
 
-                {/* Large Add Exercise Button */}
-                <button
-                    onClick={() => setIsPickerOpen(true)}
-                    className="w-full py-6 px-6 rounded-2xl border-3 border-dashed border-accent/30 bg-accent/5 hover:bg-accent/10 hover:border-accent/50 transition-all active:scale-[0.98] group"
-                >
-                    <div className="flex items-center justify-center gap-3">
-                        <div className="w-12 h-12 rounded-full bg-accent/20 group-hover:bg-accent/30 flex items-center justify-center transition-colors">
-                            <Plus size={24} className="text-accent" />
+                {/* Add Buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                    <button
+                        onClick={() => setIsTemplatePickerOpen(true)}
+                        className="py-5 px-4 rounded-2xl border-2 border-accent bg-accent/5 hover:bg-accent/10 hover:border-accent transition-all active:scale-[0.98]"
+                    >
+                        <div className="flex flex-col items-center gap-2">
+                            <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center">
+                                <Dumbbell size={20} className="text-accent" />
+                            </div>
+                            <span className="text-sm font-bold text-accent">Add Template</span>
                         </div>
-                        <span className="text-lg font-bold text-accent">Add Exercise</span>
-                    </div>
-                </button>
+                    </button>
+                    
+                    <button
+                        onClick={() => setIsPickerOpen(true)}
+                        className="py-5 px-4 rounded-2xl border-2 border-dashed border-accent/30 bg-accent/5 hover:bg-accent/10 hover:border-accent/50 transition-all active:scale-[0.98]"
+                    >
+                        <div className="flex flex-col items-center gap-2">
+                            <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center">
+                                <Plus size={20} className="text-accent" />
+                            </div>
+                            <span className="text-sm font-bold text-accent">Add Exercise</span>
+                        </div>
+                    </button>
+                </div>
 
                 {/* Discard Button */}
                 {exercises && exercises.length > 0 && (
@@ -179,6 +219,12 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) =
                 isOpen={isPickerOpen}
                 onClose={() => setIsPickerOpen(false)}
                 onSelect={handleAddExercise}
+            />
+
+            <TemplatePickerModal
+                isOpen={isTemplatePickerOpen}
+                onClose={() => setIsTemplatePickerOpen(false)}
+                onSelect={handleAddTemplate}
             />
         </div>
     );

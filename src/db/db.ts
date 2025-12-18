@@ -6,7 +6,8 @@ import type {
     WorkoutExercise,
     SetEntry,
     Settings,
-    ConflictLog
+    ConflictLog,
+    WorkoutTemplate
 } from '../types';
 import {
     MassUnit,
@@ -21,6 +22,7 @@ export class AppDatabase extends Dexie {
     workoutExercises!: Table<WorkoutExercise>;
     sets!: Table<SetEntry>;
     conflictLog!: Table<ConflictLog>;
+    workoutTemplates!: Table<WorkoutTemplate>;
 
     constructor() {
         super('StrengthJournalDB');
@@ -36,7 +38,8 @@ export class AppDatabase extends Dexie {
             workouts: '++id, &uuid, startedAt, endedAt, updatedAt, deletedAt',
             workoutExercises: '++id, &uuid, workoutId, exerciseId, updatedAt, deletedAt',
             sets: '++id, &uuid, workoutExerciseId, updatedAt, deletedAt',
-            conflictLog: '++id, &uuid, entityType, entityId'
+            conflictLog: '++id, &uuid, entityType, entityId',
+            workoutTemplates: '++id, &uuid, name, updatedAt, deletedAt'
         });
 
         this.on('populate', () => {
@@ -75,15 +78,49 @@ export class AppDatabase extends Dexie {
         ];
 
         const now = Date.now();
-        await this.exercises.bulkAdd(
-            defaultExercises.map(ex => ({
-                ...ex,
+        const exercisesWithUUIDs = defaultExercises.map(ex => ({
+            ...ex,
+            uuid: uuidv4(),
+            isCustom: false,
+            updatedAt: now,
+            equipment: 'gym',
+            aliases: []
+        } as Exercise));
+        
+        await this.exercises.bulkAdd(exercisesWithUUIDs);
+
+        // Default Workout Templates
+        const pullUpUUID = exercisesWithUUIDs.find(e => e.name === 'Pull Up')?.uuid;
+        const squatUUID = exercisesWithUUIDs.find(e => e.name === 'Squat (Barbell)')?.uuid;
+        const benchPressUUID = exercisesWithUUIDs.find(e => e.name === 'Bench Press (Barbell)')?.uuid;
+        const deadliftUUID = exercisesWithUUIDs.find(e => e.name === 'Deadlift (Barbell)')?.uuid;
+        const dipsUUID = exercisesWithUUIDs.find(e => e.name === 'Dips')?.uuid;
+        const bulgarianUUID = exercisesWithUUIDs.find(e => e.name === 'Bulgarian Split Squat')?.uuid;
+
+        const defaultTemplates: Partial<WorkoutTemplate>[] = [
+            {
+                name: 'Upper Body',
+                description: 'Chest, back, and arms',
+                exercises: [benchPressUUID, pullUpUUID, dipsUUID].filter(Boolean) as string[]
+            },
+            {
+                name: 'Lower Body',
+                description: 'Legs and glutes',
+                exercises: [squatUUID, bulgarianUUID, deadliftUUID].filter(Boolean) as string[]
+            },
+            {
+                name: 'Full Body',
+                description: 'Complete workout',
+                exercises: [squatUUID, benchPressUUID, pullUpUUID, deadliftUUID].filter(Boolean) as string[]
+            }
+        ];
+
+        await this.workoutTemplates.bulkAdd(
+            defaultTemplates.map(template => ({
+                ...template,
                 uuid: uuidv4(),
-                isCustom: false,
-                updatedAt: now,
-                equipment: 'gym',
-                aliases: []
-            } as Exercise))
+                updatedAt: now
+            } as WorkoutTemplate))
         );
     }
 }
