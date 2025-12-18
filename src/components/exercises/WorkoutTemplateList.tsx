@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Search, Trash2, Edit2, Dumbbell } from 'lucide-react';
+import { Search, Trash2, Edit2, Dumbbell } from 'lucide-react';
 
 import { db } from '../../db/db';
 import type { WorkoutTemplate } from '../../types';
@@ -10,10 +10,17 @@ import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { EditWorkoutTemplateModal } from './EditWorkoutTemplateModal';
 
-export const WorkoutTemplateList: React.FC = () => {
+export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ createTrigger = 0 }) => {
     const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<WorkoutTemplate | undefined>(undefined);
+
+    useEffect(() => {
+        if (createTrigger > 0) {
+            setEditingTemplate(undefined);
+            setIsModalOpen(true);
+        }
+    }, [createTrigger]);
 
     const templates = useLiveQuery(async () => {
         const all = await db.workoutTemplates.orderBy('name').toArray();
@@ -49,7 +56,7 @@ export const WorkoutTemplateList: React.FC = () => {
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-20">
                 {!filtered && <div className="text-center text-text-secondary mt-8">Loading...</div>}
                 {filtered?.length === 0 && (
                     <div className="text-center text-text-secondary mt-8">
@@ -110,16 +117,6 @@ export const WorkoutTemplateList: React.FC = () => {
                     template={editingTemplate}
                 />
             )}
-
-            <button
-                onClick={handleCreate}
-                className="fixed bg-accent text-white shadow-xl rounded-full px-5 py-3 font-bold flex items-center gap-2 active:scale-[0.98]"
-                style={{ right: '1rem', bottom: '8.5rem', zIndex: 60 }}
-                title="New template"
-            >
-                <Plus size={20} />
-                <span>New</span>
-            </button>
         </div>
     );
 };
