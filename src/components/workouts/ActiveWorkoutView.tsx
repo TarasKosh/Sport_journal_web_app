@@ -10,7 +10,7 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import { v4 as uuidv4 } from 'uuid';
 import { SetList } from './WorkoutSetList';
 
-export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) => {
+export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (workoutUuid: string) => void; onDiscarded?: (workoutUuid: string) => void }> = ({ workout, onFinished, onDiscarded }) => {
     const [isPickerOpen, setIsPickerOpen] = useState(false);
     const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
     const [workoutDuration, setWorkoutDuration] = useState('00:00');
@@ -77,12 +77,14 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) =
                 endedAt: Date.now(),
                 updatedAt: Date.now()
             });
+            onFinished?.(workout.uuid);
         }
     };
 
     const cancelWorkout = async () => {
         if (confirm('Delete this workout? This cannot be undone.')) {
             await db.workouts.delete(workout.id!);
+            onDiscarded?.(workout.uuid);
         }
     };
 
@@ -139,13 +141,22 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) =
                                 </div>
                             </div>
                         </div>
-                        <Button 
-                            size="md" 
-                            onClick={handleFinish} 
-                            className="bg-white text-accent hover:bg-white/90 font-bold shadow-md gap-2 px-5"
-                        >
-                            <CheckCircle size={18} /> Finish
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={cancelWorkout} 
+                                className="w-11 h-11 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition-colors"
+                                title="Discard Workout"
+                            >
+                                <Trash2 size={18} />
+                            </button>
+                            <Button 
+                                size="md" 
+                                onClick={handleFinish} 
+                                className="bg-white text-accent hover:bg-white/90 font-bold shadow-md gap-2 px-5"
+                            >
+                                <CheckCircle size={18} /> Finish
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -201,18 +212,6 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) =
                     </button>
                 </div>
 
-                {/* Discard Button */}
-                {exercises && exercises.length > 0 && (
-                    <div className="pt-6 flex justify-center">
-                        <button 
-                            onClick={cancelWorkout} 
-                            className="text-danger hover:text-danger/80 transition-colors flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-danger/5"
-                        >
-                            <Trash2 size={16} />
-                            <span className="font-medium">Discard Workout</span>
-                        </button>
-                    </div>
-                )}
             </div>
 
             <ExercisePickerModal

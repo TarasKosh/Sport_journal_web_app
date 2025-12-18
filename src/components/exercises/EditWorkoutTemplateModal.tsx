@@ -102,16 +102,22 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
 
     return (
         <div
-            className="fixed inset-0 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+            className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
             style={{ zIndex: 70 }}
         >
-            <div className="bg-bg-secondary w-full max-w-3xl rounded-xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div
+                className="bg-bg-secondary w-full max-w-3xl rounded-xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200 flex flex-col"
+                style={{ height: 'calc(100vh - 2rem)', maxHeight: 'calc(100vh - 2rem)' }}
+            >
                 <div className="flex justify-between items-center p-4 border-b border-border">
                     <h2 className="text-lg font-bold">{template ? 'Edit Template' : 'New Template'}</h2>
                     <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X size={24} /></button>
                 </div>
 
-                <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto">
+                <div
+                    className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4"
+                    style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
+                >
                     <div className="space-y-4">
                         <div className="flex flex-col gap-1 w-full">
                             <label className="text-sm text-text-secondary font-medium">Name</label>
@@ -183,7 +189,7 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
                         </div>
                     </div>
 
-                    <div className="border border-border rounded-lg bg-bg-primary flex flex-col overflow-hidden">
+                    <div className="border border-border rounded-lg bg-bg-primary flex flex-col overflow-hidden" style={{ minHeight: 0 }}>
                         <div className="p-3 border-b border-border">
                             <div className="relative">
                                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
