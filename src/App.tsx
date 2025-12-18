@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ExerciseList } from './components/exercises/ExerciseList';
 import { WorkoutPage } from './components/workouts/WorkoutPage';
 import { HistoryList } from './components/history/HistoryList';
@@ -9,7 +9,7 @@ import { AppShell } from './components/layout/AppShell';
 function App() {
   return (
     <div className="h-full flex flex-col">
-      <BrowserRouter>
+      <HashRouter>
         <Routes>
           <Route path="/" element={<AppShell />}>
             <Route index element={<Navigate to="/workout" replace />} />
@@ -20,7 +20,7 @@ function App() {
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </HashRouter>
     </div>
   );
 }
