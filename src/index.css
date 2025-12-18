@@ -1318,3 +1318,11 @@ button {
 .text-danger {
   color: var(--color-danger);
 }
+
+.disabled\:opacity-20:disabled {
+  opacity: 0.2;
+}
+
+.disabled\:cursor-not-allowed:disabled {
+  cursor: not-allowed;
+}

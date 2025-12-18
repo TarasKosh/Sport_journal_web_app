@@ -58,7 +58,41 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) =
         if (confirm('Delete this workout? This cannot be undone.')) {
             await db.workouts.delete(workout.id!);
         }
-    }
+    };
+
+    const deleteExercise = async (workoutExerciseId: number) => {
+        if (confirm('Remove this exercise from workout?')) {
+            const we = exercises?.find(e => e.id === workoutExerciseId);
+            if (!we) return;
+            
+            // Delete all sets for this exercise
+            const sets = await db.sets.where('workoutExerciseId').equals(we.uuid).toArray();
+            await db.sets.bulkDelete(sets.map(s => s.id!));
+            // Delete the workout exercise
+            await db.workoutExercises.delete(workoutExerciseId);
+            // Reorder remaining exercises
+            if (exercises) {
+                const remaining = exercises.filter(e => e.id !== workoutExerciseId);
+                for (let i = 0; i < remaining.length; i++) {
+                    await db.workoutExercises.update(remaining[i].id!, { order: i, updatedAt: Date.now() });
+                }
+            }
+        }
+    };
+
+    const moveExercise = async (index: number, direction: 'up' | 'down') => {
+        if (!exercises) return;
+        
+        const newIndex = direction === 'up' ? index - 1 : index + 1;
+        if (newIndex < 0 || newIndex >= exercises.length) return;
+
+        const ex1 = exercises[index];
+        const ex2 = exercises[newIndex];
+
+        // Swap orders
+        await db.workoutExercises.update(ex1.id!, { order: newIndex, updatedAt: Date.now() });
+        await db.workoutExercises.update(ex2.id!, { order: index, updatedAt: Date.now() });
+    };
 
     return (
         <div className="flex flex-col h-full bg-bg-primary">
@@ -102,8 +136,16 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) =
                     </div>
                 )}
 
-                {exercises?.map((we) => (
-                    <WorkoutExerciseItem key={we.uuid} workoutExercise={we} />
+                {exercises?.map((we, index) => (
+                    <WorkoutExerciseItem 
+                        key={we.uuid} 
+                        workoutExercise={we}
+                        index={index}
+                        totalCount={exercises.length}
+                        onDelete={() => deleteExercise(we.id!)}
+                        onMoveUp={() => moveExercise(index, 'up')}
+                        onMoveDown={() => moveExercise(index, 'down')}
+                    />
                 ))}
 
                 {/* Large Add Exercise Button */}
@@ -143,12 +185,28 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) =
 };
 
 // Sub-component wrapper to fetch exercise name cleanly
-const WorkoutExerciseItem: React.FC<{ workoutExercise: WorkoutExercise }> = ({ workoutExercise }) => {
+const WorkoutExerciseItem: React.FC<{ 
+    workoutExercise: WorkoutExercise;
+    index: number;
+    totalCount: number;
+    onDelete: () => void;
+    onMoveUp: () => void;
+    onMoveDown: () => void;
+}> = ({ workoutExercise, index, totalCount, onDelete, onMoveUp, onMoveDown }) => {
     const exercise = useLiveQuery(() => db.exercises.where('uuid').equals(workoutExercise.exerciseId).first());
 
     if (!exercise) return <div className="animate-pulse bg-bg-tertiary h-20 rounded-lg"></div>;
 
     return (
-        <SetList workoutExercise={workoutExercise} exerciseName={exercise.name} isUnilateral={exercise.isUnilateral} />
+        <SetList 
+            workoutExercise={workoutExercise} 
+            exerciseName={exercise.name} 
+            isUnilateral={exercise.isUnilateral}
+            index={index}
+            totalCount={totalCount}
+            onDelete={onDelete}
+            onMoveUp={onMoveUp}
+            onMoveDown={onMoveDown}
+        />
     );
 }

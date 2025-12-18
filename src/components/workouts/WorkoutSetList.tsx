@@ -2,7 +2,7 @@ import React from 'react';
 import type { WorkoutExercise } from '../../types';
 import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, MoreHorizontal, Dumbbell } from 'lucide-react';
+import { Plus, Dumbbell, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { Card } from '../common/Card';
 import { SetItem } from './SetItem';
@@ -11,9 +11,23 @@ interface SetListProps {
     workoutExercise: WorkoutExercise;
     exerciseName: string;
     isUnilateral?: boolean;
+    index?: number;
+    totalCount?: number;
+    onDelete?: () => void;
+    onMoveUp?: () => void;
+    onMoveDown?: () => void;
 }
 
-export const SetList: React.FC<SetListProps> = ({ workoutExercise, exerciseName, isUnilateral }) => {
+export const SetList: React.FC<SetListProps> = ({ 
+    workoutExercise, 
+    exerciseName, 
+    isUnilateral,
+    index,
+    totalCount,
+    onDelete,
+    onMoveUp,
+    onMoveDown
+}) => {
     const exercise = useLiveQuery(() => db.exercises.get(workoutExercise.exerciseId), [workoutExercise.exerciseId]);
 
     const sets = useLiveQuery(async () => {
@@ -59,11 +73,35 @@ export const SetList: React.FC<SetListProps> = ({ workoutExercise, exerciseName,
                     </div>
                 </div>
 
-                {/* Right Side: Stats Summary */}
-                <div className="flex gap-4 text-center mr-2">
-                    <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Sets</span>
-                        <span className="text-xl font-bold text-text-primary">{sets?.length || 0}</span>
+                {/* Right Side: Controls + Stats */}
+                <div className="flex items-center gap-3">
+                    {/* Move buttons */}
+                    {onMoveUp && onMoveDown && typeof index === 'number' && typeof totalCount === 'number' && (
+                        <div className="flex flex-col gap-0.5">
+                            <button
+                                onClick={onMoveUp}
+                                disabled={index === 0}
+                                className="text-text-tertiary hover:text-accent disabled:opacity-20 disabled:cursor-not-allowed transition-colors p-1"
+                                title="Move up"
+                            >
+                                <ChevronUp size={20} strokeWidth={2.5} />
+                            </button>
+                            <button
+                                onClick={onMoveDown}
+                                disabled={index === totalCount - 1}
+                                className="text-text-tertiary hover:text-accent disabled:opacity-20 disabled:cursor-not-allowed transition-colors p-1"
+                                title="Move down"
+                            >
+                                <ChevronDown size={20} strokeWidth={2.5} />
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Stats Summary */}
+                    <div className="flex gap-4 text-center">
+                        <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Sets</span>
+                            <span className="text-xl font-bold text-text-primary">{sets?.length || 0}</span>
                     </div>
                     <div className="flex flex-col items-center gap-0.5">
                         <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Reps</span>
@@ -73,6 +111,18 @@ export const SetList: React.FC<SetListProps> = ({ workoutExercise, exerciseName,
                         <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Kg</span>
                         <span className="text-xl font-bold text-text-primary text-text-tertiary/30">-</span>
                     </div>
+                </div>
+
+                    {/* Delete button */}
+                    {onDelete && (
+                        <button
+                            onClick={onDelete}
+                            className="text-text-tertiary hover:text-danger transition-colors p-2 rounded-lg hover:bg-danger/10"
+                            title="Remove exercise"
+                        >
+                            <Trash2 size={20} />
+                        </button>
+                    )}
                 </div>
             </div>
 

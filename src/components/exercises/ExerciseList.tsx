@@ -6,7 +6,7 @@ import type { Exercise } from '../../types';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
-import { Plus, Search, Tag } from 'lucide-react';
+import { Plus, Search, Tag, Trash2 } from 'lucide-react';
 import { EditExerciseModal } from './EditExerciseModal';
 import { ExerciseDetails } from './ExerciseDetails';
 
@@ -17,8 +17,6 @@ export const ExerciseList: React.FC = () => {
     const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
 
     const exercises = useLiveQuery(async () => {
-        // If we had many exercises, we'd use a more complex query or offset/limit
-        // For now, simple client-side filter after fetch or basic startsWith
         const all = await db.exercises.orderBy('name').toArray();
         if (!search) return all;
         const lower = search.toLowerCase();
@@ -65,9 +63,10 @@ export const ExerciseList: React.FC = () => {
                     </div>
                 )}
 
-                {exercises?.map(ex => (
-                    <Card key={ex.uuid} onClick={() => setSelectedExercise(ex)} className="cursor-pointer hover:bg-bg-tertiary flex justify-between items-center group">
-                        <div>
+                {exercises?.map((ex) => (
+                    <Card key={ex.uuid} className="flex items-center gap-2 group hover:bg-bg-tertiary transition-colors">
+                        {/* Exercise Info */}
+                        <div className="flex-1 cursor-pointer py-2" onClick={() => setSelectedExercise(ex)}>
                             <h3 className="font-medium text-lg">{ex.name}</h3>
                             <div className="flex items-center text-xs text-text-secondary mt-1 gap-2">
                                 <span className="capitalize flex items-center gap-1">
@@ -76,6 +75,20 @@ export const ExerciseList: React.FC = () => {
                                 {ex.equipment && <span className="capitalize">• {ex.equipment}</span>}
                             </div>
                         </div>
+
+                        {/* Delete Button */}
+                        <button
+                            onClick={async (e) => {
+                                e.stopPropagation();
+                                if (confirm(`Delete "${ex.name}"? This cannot be undone.`)) {
+                                    await db.exercises.delete(ex.id!);
+                                }
+                            }}
+                            className="text-text-tertiary hover:text-danger transition-colors opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-danger/10"
+                            title="Delete exercise"
+                        >
+                            <Trash2 size={20} />
+                        </button>
                     </Card>
                 ))}
             </div>
