@@ -28,6 +28,8 @@ export const SetList: React.FC<SetListProps> = ({
     onMoveUp,
     onMoveDown
 }) => {
+    const [trackSides, setTrackSides] = React.useState(isUnilateral || false);
+    
     const exercise = useLiveQuery(() => db.exercises.get(workoutExercise.exerciseId), [workoutExercise.exerciseId]);
 
     const sets = useLiveQuery(async () => {
@@ -45,6 +47,7 @@ export const SetList: React.FC<SetListProps> = ({
             weight: lastSet ? lastSet.weight : 0,
             reps: lastSet ? lastSet.reps : 0,
             rpe: lastSet ? lastSet.rpe : undefined,
+            side: trackSides ? 'left' : undefined,
             isWarmup: false,
             isFailure: false,
             updatedAt: Date.now()
@@ -67,9 +70,23 @@ export const SetList: React.FC<SetListProps> = ({
                     {/* Info */}
                     <div className="flex flex-col gap-1">
                         <h3 className="font-bold text-lg text-text-primary leading-tight">{exerciseName}</h3>
-                        <p className="text-sm text-text-secondary leading-snug capitalize font-medium">
-                            {exercise?.muscleGroup?.replace('_', ' ') || 'General'}
-                        </p>
+                        <div className="flex items-center gap-2">
+                            <p className="text-sm text-text-secondary leading-snug capitalize font-medium">
+                                {exercise?.muscleGroup?.replace('_', ' ') || 'General'}
+                            </p>
+                            {/* L/R Toggle */}
+                            <button
+                                onClick={() => setTrackSides(!trackSides)}
+                                className={`text-xs font-bold px-2 py-0.5 rounded transition-all ${
+                                    trackSides 
+                                        ? 'bg-accent text-white' 
+                                        : 'bg-bg-tertiary text-text-tertiary hover:bg-bg-tertiary/80'
+                                }`}
+                                title="Track left/right sides separately"
+                            >
+                                L/R
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -131,7 +148,7 @@ export const SetList: React.FC<SetListProps> = ({
             {/* Sets List */}
             <div className="flex flex-col px-4 pb-4 gap-1 bg-bg-tertiary/10">
                 {sets?.map((set, index) => (
-                    <SetItem key={set.uuid} set={set} index={index} isUnilateral={isUnilateral} />
+                    <SetItem key={set.uuid} set={set} index={index} isUnilateral={trackSides} />
                 ))}
 
                 {/* Add Set Button - Prominent and visible */}

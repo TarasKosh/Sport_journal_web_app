@@ -11,7 +11,7 @@ interface SetItemProps {
     isUnilateral?: boolean;
 }
 
-export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral }) => {
+export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnilateral }) => {
     const [weight, setWeight] = useState(set.weight.toString());
     const [reps, setReps] = useState(set.reps.toString());
     const [rpe, setRpe] = useState(set.rpe?.toString() || '');
@@ -41,11 +41,7 @@ export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral }) =>
         }).catch(console.error);
     }, [debouncedWeight, debouncedReps, debouncedRpe, debouncedFailureRep, isFailure, set.id, set.weight, set.reps, set.rpe, set.failureRep]);
 
-    const handleSideChange = () => {
-        const newSide = side === 'left' ? 'right' : 'left';
-        setSide(newSide);
-        db.sets.update(set.id!, { side: newSide, updatedAt: Date.now() });
-    };
+
 
     const toggleFailure = () => {
         const newVal = !isFailure;
@@ -91,8 +87,9 @@ export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral }) =>
                 inputMode="decimal"
                 value={value}
                 onChange={e => onChange(e.target.value)}
+                onFocus={e => e.target.select()}
                 className={clsx(
-                    "flex-1 bg-transparent text-center text-2xl font-bold outline-none px-2 hide-number-arrows min-w-0",
+                    "flex-1 bg-transparent text-center text-2xl font-bold outline-none px-2 hide-number-arrows min-w-0 pointer-events-auto",
                     isDanger ? "text-danger placeholder:text-danger/30" : "text-text-primary placeholder:text-text-tertiary/30"
                 )}
                 placeholder={placeholder}
@@ -129,15 +126,36 @@ export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral }) =>
                         {index + 1}
                     </div>
                     {isUnilateral && (
-                        <button
-                            onClick={handleSideChange}
-                            className={clsx(
-                                "text-[10px] uppercase font-bold leading-none px-1.5 py-0.5 rounded cursor-pointer select-none transition-all",
-                                side === 'left' ? "text-accent bg-accent/10" : "text-text-tertiary bg-text-tertiary/10"
-                            )}
-                        >
-                            {side === 'left' ? 'L' : 'R'}
-                        </button>
+                        <div className="flex gap-0.5 bg-bg-tertiary rounded-lg p-0.5">
+                            <button
+                                onClick={() => {
+                                    if (side !== 'left') {
+                                        setSide('left');
+                                        db.sets.update(set.id!, { side: 'left', updatedAt: Date.now() });
+                                    }
+                                }}
+                                className={clsx(
+                                    "text-sm uppercase font-bold px-2 py-1 rounded cursor-pointer select-none transition-all",
+                                    side === 'left' ? "bg-accent text-white shadow-sm" : "text-text-tertiary hover:text-text-secondary"
+                                )}
+                            >
+                                L
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (side !== 'right') {
+                                        setSide('right');
+                                        db.sets.update(set.id!, { side: 'right', updatedAt: Date.now() });
+                                    }
+                                }}
+                                className={clsx(
+                                    "text-sm uppercase font-bold px-2 py-1 rounded cursor-pointer select-none transition-all",
+                                    side === 'right' ? "bg-accent text-white shadow-sm" : "text-text-tertiary hover:text-text-secondary"
+                                )}
+                            >
+                                R
+                            </button>
+                        </div>
                     )}
                 </div>
                 <button
@@ -222,4 +240,9 @@ export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral }) =>
             )}
         </div>
     );
-};
+}, (prevProps, nextProps) => {
+    // Only re-render if set.id or isUnilateral changed
+    return prevProps.set.id === nextProps.set.id && 
+           prevProps.isUnilateral === nextProps.isUnilateral &&
+           prevProps.index === nextProps.index;
+});

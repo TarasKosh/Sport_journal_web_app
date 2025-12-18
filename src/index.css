@@ -1326,3 +1326,19 @@ button {
 .disabled\:cursor-not-allowed:disabled {
   cursor: not-allowed;
 }
+
+.gap-0\.5 {
+  gap: 0.125rem;
+}
+
+.p-0\.5 {
+  padding: 0.125rem;
+}
+
+.hover\:text-text-secondary:hover {
+  color: var(--color-text-secondary);
+}
+
+.pointer-events-auto {
+  pointer-events: auto;
+}
