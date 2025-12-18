@@ -3,7 +3,7 @@ import type { Workout, WorkoutExercise } from '../../types';
 import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Button } from '../common/Button';
-import { Plus, CheckCircle, Trash2 } from 'lucide-react';
+import { Plus, CheckCircle, Trash2, Clock, Dumbbell } from 'lucide-react';
 
 import { ExercisePickerModal } from './ExercisePickerModal';
 import { v4 as uuidv4 } from 'uuid';
@@ -11,18 +11,23 @@ import { SetList } from './WorkoutSetList';
 
 export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) => {
     const [isPickerOpen, setIsPickerOpen] = useState(false);
+    const [workoutDuration, setWorkoutDuration] = useState('00:00');
 
-    // Load workout exercises (sorted by order ideally, but simple list for now)
+    // Update workout duration every second
+    React.useEffect(() => {
+        const interval = setInterval(() => {
+            const duration = Date.now() - workout.startedAt;
+            const minutes = Math.floor(duration / 60000);
+            const seconds = Math.floor((duration % 60000) / 1000);
+            setWorkoutDuration(`${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [workout.startedAt]);
+
     const exercises = useLiveQuery(async () => {
         const list = await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray();
-        // sort by order
         return list.sort((a, b) => a.order - b.order);
     }, [workout.uuid]);
-
-    // Load implementation details (exercise names) - optimized join
-    // Alternatively, SetList can fetch its own exercise details or we do a comprehensive query.
-    // For simplicity, let's just pass workoutExercise to SetList and let it resolve name.
-    // Or we create a mapped object here.
 
     const handleAddExercise = async (exerciseId: string) => {
         try {
@@ -46,38 +51,54 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) =
                 endedAt: Date.now(),
                 updatedAt: Date.now()
             });
-            // Navigation handled by WorkoutPage (activeWorkout becomes null)
         }
     };
 
     const cancelWorkout = async () => {
-        if (confirm('Delete this workout logic? This cannot be undone.')) {
-            // Ideally cascade delete (sets, workoutExercises).
-            // For MVP, simplistic delete.
+        if (confirm('Delete this workout? This cannot be undone.')) {
             await db.workouts.delete(workout.id!);
-            // We should clean up orphans, but okay for MVP.
         }
     }
 
     return (
         <div className="flex flex-col h-full bg-bg-primary">
-            {/* Header */}
-            <div className="p-4 bg-bg-secondary border-b border-border flex justify-between items-center sticky top-0 z-10 shadow-sm">
-                <div>
-                    <h1 className="text-lg font-bold">Current Workout</h1>
-                    <p className="text-xs text-text-secondary">Started at {new Date(workout.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+            {/* Modern Header with Stats */}
+            <div className="bg-gradient-to-br from-accent to-accent-hover text-white shadow-lg">
+                <div className="p-6 pb-4">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h1 className="text-2xl font-bold mb-1">Active Workout</h1>
+                            <div className="flex items-center gap-3 text-white/90">
+                                <div className="flex items-center gap-1.5">
+                                    <Clock size={16} />
+                                    <span className="font-mono text-lg font-semibold">{workoutDuration}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <Dumbbell size={16} />
+                                    <span className="font-semibold">{exercises?.length || 0} exercises</span>
+                                </div>
+                            </div>
+                        </div>
+                        <Button 
+                            size="md" 
+                            onClick={handleFinish} 
+                            className="bg-white text-accent hover:bg-white/90 font-bold shadow-md gap-2 px-5"
+                        >
+                            <CheckCircle size={18} /> Finish
+                        </Button>
+                    </div>
                 </div>
-                <Button size="sm" variant="primary" onClick={handleFinish} className="gap-2">
-                    <CheckCircle size={16} /> Finish
-                </Button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24">
                 {exercises?.length === 0 && (
-                    <div className="text-center py-10 text-text-secondary">
-                        <p>No exercises yet.</p>
-                        <p className="text-sm">Add one to get started!</p>
+                    <div className="text-center py-16 px-6">
+                        <div className="bg-bg-tertiary w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Dumbbell size={36} className="text-text-tertiary" />
+                        </div>
+                        <h3 className="text-xl font-bold mb-2 text-text-primary">No exercises yet</h3>
+                        <p className="text-text-secondary mb-6">Add your first exercise to start tracking</p>
                     </div>
                 )}
 
@@ -85,20 +106,31 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout }> = ({ workout }) =
                     <WorkoutExerciseItem key={we.uuid} workoutExercise={we} />
                 ))}
 
-                <Button
-                    variant="secondary"
-                    fullWidth
-                    className="py-4 border-2 border-dashed border-border bg-transparent hover:bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors"
+                {/* Large Add Exercise Button */}
+                <button
                     onClick={() => setIsPickerOpen(true)}
+                    className="w-full py-6 px-6 rounded-2xl border-3 border-dashed border-accent/30 bg-accent/5 hover:bg-accent/10 hover:border-accent/50 transition-all active:scale-[0.98] group"
                 >
-                    <Plus size={20} className="mr-2" /> Add Exercise
-                </Button>
+                    <div className="flex items-center justify-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-accent/20 group-hover:bg-accent/30 flex items-center justify-center transition-colors">
+                            <Plus size={24} className="text-accent" />
+                        </div>
+                        <span className="text-lg font-bold text-accent">Add Exercise</span>
+                    </div>
+                </button>
 
-                <div className="pt-8 flex justify-center">
-                    <Button variant="ghost" size="sm" onClick={cancelWorkout} className="text-danger">
-                        <Trash2 size={14} className="mr-1" /> Discard Workout
-                    </Button>
-                </div>
+                {/* Discard Button */}
+                {exercises && exercises.length > 0 && (
+                    <div className="pt-6 flex justify-center">
+                        <button 
+                            onClick={cancelWorkout} 
+                            className="text-danger hover:text-danger/80 transition-colors flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-danger/5"
+                        >
+                            <Trash2 size={16} />
+                            <span className="font-medium">Discard Workout</span>
+                        </button>
+                    </div>
+                )}
             </div>
 
             <ExercisePickerModal

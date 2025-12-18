@@ -2,11 +2,10 @@ import React from 'react';
 import type { WorkoutExercise } from '../../types';
 import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Button } from '../common/Button';
-import { Plus, MoreHorizontal } from 'lucide-react';
+import { Plus, MoreHorizontal, Dumbbell } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { Card } from '../common/Card';
-import { SetItem } from './SetItem'; // We will create this next
+import { SetItem } from './SetItem';
 
 interface SetListProps {
     workoutExercise: WorkoutExercise;
@@ -15,17 +14,15 @@ interface SetListProps {
 }
 
 export const SetList: React.FC<SetListProps> = ({ workoutExercise, exerciseName, isUnilateral }) => {
+    const exercise = useLiveQuery(() => db.exercises.get(workoutExercise.exerciseId), [workoutExercise.exerciseId]);
+
     const sets = useLiveQuery(async () => {
         const s = await db.sets.where('workoutExerciseId').equals(workoutExercise.uuid).toArray();
         return s.sort((a, b) => a.order - b.order);
     }, [workoutExercise.uuid]);
 
     const handleAddSet = async () => {
-        // Auto-fill logic: copy previous set or default
         const lastSet = sets && sets.length > 0 ? sets[sets.length - 1] : null;
-
-        // If no sets in this session, try to find last set from history (TODO for polish)
-        // For MVP, just previous set in this list or empty
 
         await db.sets.add({
             uuid: uuidv4(),
@@ -40,23 +37,80 @@ export const SetList: React.FC<SetListProps> = ({ workoutExercise, exerciseName,
         });
     };
 
+    // Grid for the Sets List:
+    // # | KG | Reps | RPE | Actions
+    const gridStyle = {
+        display: 'grid',
+        gridTemplateColumns: '32px 1fr 1fr 1fr 32px',
+        gap: '12px',
+        alignItems: 'center'
+    };
+
     return (
-        <Card className="flex flex-col gap-2 bg-bg-secondary p-3">
-            <div className="flex justify-between items-center mb-1">
-                <h3 className="font-bold text-base text-accent">{exerciseName}</h3>
-                <button className="text-text-secondary"><MoreHorizontal size={18} /></button>
+        <Card className="flex flex-col bg-bg-secondary p-0 rounded-xl border border-border/60 shadow-md overflow-hidden animate-in fade-in slide-in-from-bottom-10">
+            {/* Header Section matching reference */}
+            <div className="flex flex-row p-4 gap-4 border-b border-border/40 items-center justify-between relative">
+
+                <div className="flex items-center gap-4 flex-1">
+                    {/* Image Placeholder */}
+                    <div className="w-20 h-20 bg-white border border-border/20 rounded-lg flex items-center justify-center text-text-tertiary flex-shrink-0 p-2 shadow-sm">
+                        <Dumbbell size={32} strokeWidth={1} className="text-text-tertiary/50" />
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex flex-col gap-1">
+                        <h3 className="font-bold text-lg text-text-primary leading-tight">{exerciseName}</h3>
+                        <p className="text-sm text-text-secondary leading-snug capitalize font-medium">
+                            {exercise?.muscleGroup?.replace('_', ' ') || 'General'}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Right Side: Stats Summary */}
+                <div className="flex gap-4 text-center mr-2">
+                    <div className="flex flex-col items-center gap-0.5">
+                        <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Sets</span>
+                        <span className="text-xl font-bold text-text-primary">{sets?.length || 0}</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5">
+                        <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Reps</span>
+                        <span className="text-xl font-bold text-text-primary text-text-tertiary/30">-</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5">
+                        <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Kg</span>
+                        <span className="text-xl font-bold text-text-primary text-text-tertiary/30">-</span>
+                    </div>
+                </div>
             </div>
 
-            {/* Header row removed - moving labels to items for better UX */}
-            <div className="flex flex-col gap-1">
+            {/* Sets Header - Styled to look like the "rows" in the reference */}
+            {sets && sets.length > 0 && (
+                <div className="px-4 pt-4 pb-2 bg-bg-tertiary/10">
+                    <div style={gridStyle} className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider text-center select-none">
+                        <div>#</div>
+                        <div>kg</div>
+                        <div>Reps</div>
+                        <div>RPE</div>
+                        <div></div>
+                    </div>
+                </div>
+            )}
+
+            {/* Sets List */}
+            <div className="flex flex-col px-4 pb-4 gap-1 bg-bg-tertiary/10">
                 {sets?.map((set, index) => (
-                    <SetItem key={set.uuid} set={set} index={index} isUnilateral={isUnilateral} />
+                    <SetItem key={set.uuid} set={set} index={index} isUnilateral={isUnilateral} gridStyle={gridStyle} />
                 ))}
-            </div>
 
-            <Button size="sm" variant="secondary" onClick={handleAddSet} className="mt-2 bg-bg-tertiary">
-                <Plus size={16} className="mr-1" /> Add Set
-            </Button>
+                {/* Add Set Button - Prominent and visible */}
+                <button
+                    onClick={handleAddSet}
+                    className="flex items-center justify-center gap-2 px-6 py-4 mt-4 rounded-xl bg-accent hover:bg-accent-hover text-white shadow-lg hover:shadow-xl transition-all active:scale-[0.98] font-bold text-base"
+                >
+                    <Plus size={20} strokeWidth={3} />
+                    <span>Add Set</span>
+                </button>
+            </div>
         </Card>
     );
 };

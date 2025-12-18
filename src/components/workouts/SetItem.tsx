@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { SetEntry } from '../../types';
 import { db } from '../../db/db';
-import { Trash2, AlertCircle } from 'lucide-react';
+import { Trash2, AlertCircle, CornerDownRight } from 'lucide-react';
 import clsx from 'clsx';
 import { useDebounce } from '../../hooks/useDebounce';
 
@@ -9,9 +9,10 @@ interface SetItemProps {
     set: SetEntry;
     index: number;
     isUnilateral?: boolean;
+    gridStyle: React.CSSProperties;
 }
 
-export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral }) => {
+export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral, gridStyle }) => {
     const [weight, setWeight] = useState(set.weight.toString());
     const [reps, setReps] = useState(set.reps.toString());
     const [rpe, setRpe] = useState(set.rpe?.toString() || '');
@@ -41,7 +42,8 @@ export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral }) =>
         }).catch(console.error);
     }, [debouncedWeight, debouncedReps, debouncedRpe, debouncedFailureRep, isFailure, set.id, set.weight, set.reps, set.rpe, set.failureRep]);
 
-    const handleSideChange = (newSide: 'left' | 'right') => {
+    const handleSideChange = () => {
+        const newSide = side === 'left' ? 'right' : 'left';
         setSide(newSide);
         db.sets.update(set.id!, { side: newSide, updatedAt: Date.now() });
     };
@@ -49,7 +51,6 @@ export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral }) =>
     const toggleFailure = () => {
         const newVal = !isFailure;
         setIsFailure(newVal);
-        // If enabling failure and no failureRep set, default to current reps
         if (newVal && !failureRep) {
             setFailureRep(reps);
         }
@@ -64,22 +65,38 @@ export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral }) =>
         await db.sets.delete(set.id!);
     };
 
-    const labelClass = "text-[10px] uppercase text-text-tertiary font-semibold tracking-wider mb-1 text-center";
-    const inputWrapperClass = "flex flex-col flex-1 min-w-[60px]";
-    const inputClass = "w-full bg-bg-secondary border border-border rounded-md px-1 py-2 text-center text-lg font-bold focus:border-accent focus:outline-none transition-colors";
+    // Styling - Ghost Inputs -> Look like text but editable.
+    // Background transparent, border transparent, underline on focus? Or just box.
+    // matching the clean table look.
+    const inputClass = "w-full bg-transparent border-b border-border/50 focus:border-accent hover:bg-bg-tertiary/50 rounded-lg h-10 text-center text-lg font-bold outline-none transition-all placeholder:text-text-tertiary/20 text-text-primary focus:bg-bg-tertiary focus:shadow-sm";
+    const activeRowClass = isFailure ? "bg-danger/5 rounded border-l-2 border-l-danger" : "hover:bg-bg-secondary/30 rounded border-l-2 border-l-transparent";
 
     return (
-        <div className="flex flex-col gap-3 bg-bg-tertiary/50 border border-border/50 rounded-xl p-3 mb-2">
-            {/* Main Inputs Row */}
-            <div className="flex items-start gap-3">
-                <div className="flex flex-col justify-center items-center gap-1 pt-6">
-                    <div className="w-6 h-6 rounded-full bg-bg-secondary text-text-secondary flex items-center justify-center text-xs font-bold select-none border border-border">
+        <div className={clsx("flex flex-col py-1 transition-colors", activeRowClass)}>
+
+            {/* The GRID ROW */}
+            <div style={gridStyle}>
+
+                {/* 1. Set Number + Side */}
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                    <div className="text-sm font-bold text-text-tertiary">
                         {index + 1}
                     </div>
+                    {isUnilateral && (
+                        <button
+                            onClick={handleSideChange}
+                            className={clsx(
+                                "text-[10px] uppercase font-bold leading-none px-1 rounded cursor-pointer select-none transition-all w-5 text-center",
+                                side === 'left' ? "text-accent bg-accent/10" : "text-text-tertiary bg-text-tertiary/10 scale-90"
+                            )}
+                        >
+                            {side === 'left' ? 'L' : 'R'}
+                        </button>
+                    )}
                 </div>
 
-                <div className={inputWrapperClass}>
-                    <span className={labelClass}>kg</span>
+                {/* 2. KG */}
+                <div className="relative group">
                     <input
                         type="number"
                         inputMode="decimal"
@@ -90,23 +107,20 @@ export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral }) =>
                     />
                 </div>
 
-                <div className={inputWrapperClass}>
-                    <span className={labelClass}>Reps</span>
+                {/* 3. Reps */}
+                <div className="relative group">
                     <input
                         type="number"
                         inputMode="numeric"
                         value={reps}
-                        onChange={e => {
-                            setReps(e.target.value);
-                            // Optional: sync failureRep if needed, but keeping separate is often safer
-                        }}
-                        className={inputClass}
+                        onChange={e => setReps(e.target.value)}
+                        className={clsx(inputClass, isFailure && "text-danger font-bold")}
                         placeholder="0"
                     />
                 </div>
 
-                <div className={inputWrapperClass}>
-                    <span className={labelClass}>RPE</span>
+                {/* 4. RPE */}
+                <div className="relative group">
                     <input
                         type="number"
                         inputMode="decimal"
@@ -118,72 +132,51 @@ export const SetItem: React.FC<SetItemProps> = ({ set, index, isUnilateral }) =>
                     />
                 </div>
 
-                <div className="pt-6">
-                    <button onClick={handleDelete} className="w-10 h-10 flex items-center justify-center text-text-tertiary hover:text-danger hover:bg-danger/10 rounded-md transition-colors">
-                        <Trash2 size={18} />
+                {/* 5. Controls */}
+                <div className="flex flex-col items-center justify-center gap-1">
+                    <button
+                        onClick={toggleFailure}
+                        className={clsx(
+                            "flex items-center justify-center transition-all w-8 h-8 rounded-full",
+                            isFailure ? "bg-danger text-white shadow-sm scale-100" : "text-text-tertiary hover:bg-bg-tertiary hover:text-text-secondary opacity-60 hover:opacity-100 scale-90 hover:scale-100"
+                        )}
+                        title="Toggle Failure"
+                    >
+                        <AlertCircle size={16} fill={isFailure ? "currentColor" : "none"} />
                     </button>
                 </div>
             </div>
 
-            {/* Secondary Controls Row */}
-            <div className="flex flex-wrap gap-4 items-center pl-9 border-t border-border/30 pt-2">
-                {/* Side Selector */}
-                {isUnilateral && (
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-text-secondary font-medium">Side:</span>
-                        <div className="flex bg-bg-secondary rounded-lg p-1 border border-border">
-                            <button
-                                onClick={() => handleSideChange('left')}
-                                className={clsx(
-                                    "px-3 py-1 rounded-md text-xs font-bold transition-all",
-                                    side === 'left' ? "bg-accent text-white shadow-sm" : "text-text-secondary hover:text-text-primary"
-                                )}
-                            >
-                                L
-                            </button>
-                            <button
-                                onClick={() => handleSideChange('right')}
-                                className={clsx(
-                                    "px-3 py-1 rounded-md text-xs font-bold transition-all",
-                                    side === 'right' ? "bg-accent text-white shadow-sm" : "text-text-secondary hover:text-text-primary"
-                                )}
-                            >
-                                R
-                            </button>
+            {/* FAILURE EXPANDED */}
+            {isFailure && (
+                <div className="px-2 mt-2 mb-1">
+                    <div style={gridStyle} className="items-center">
+                        <div className="flex items-center justify-center">
+                            <CornerDownRight size={14} className="text-danger/60" />
                         </div>
-                    </div>
-                )}
-
-                {/* Failure Toggle */}
-                <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-2 cursor-pointer select-none group">
-                        <div className={clsx(
-                            "w-5 h-5 rounded border flex items-center justify-center transition-colors",
-                            isFailure ? "bg-danger border-danger text-white" : "border-text-tertiary bg-transparent group-hover:border-text-secondary"
-                        )}>
-                            {isFailure && <AlertCircle size={12} fill="currentColor" />}
-                        </div>
-                        <input type="checkbox" className="hidden" checked={isFailure} onChange={toggleFailure} />
-                        <span className={clsx("text-xs font-medium transition-colors", isFailure ? "text-danger" : "text-text-secondary")}>
-                            Failure
-                        </span>
-                    </label>
-
-                    {/* Failure Rep Input (Conditional) */}
-                    {isFailure && (
-                        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
-                            <span className="text-xs text-text-secondary">@ Rep:</span>
+                        <div className="col-span-2 flex items-center gap-2">
+                            <span className="text-xs text-danger/80 font-semibold uppercase tracking-wide whitespace-nowrap">Failed @</span>
                             <input
                                 type="number"
                                 inputMode="numeric"
                                 value={failureRep}
                                 onChange={e => setFailureRep(e.target.value)}
-                                className="w-14 bg-bg-secondary border border-border rounded px-2 py-1 text-center text-sm font-mono focus:border-danger focus:outline-none"
+                                className="w-full bg-transparent border-b border-danger/40 focus:border-danger hover:bg-danger/5 rounded-lg h-10 text-center text-lg font-bold outline-none transition-all text-danger focus:bg-danger/5 focus:shadow-sm"
+                                placeholder="0"
                             />
                         </div>
-                    )}
+                        <div></div>
+                        <div className="flex items-center justify-center">
+                            <button
+                                onClick={handleDelete}
+                                className="text-text-tertiary hover:text-danger transition-colors opacity-60 hover:opacity-100"
+                            >
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };
