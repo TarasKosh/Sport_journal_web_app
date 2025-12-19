@@ -24,7 +24,11 @@
 - All fields editable after creation (title, notes, mood, date, etc.)
 
 ## Editing Logic
-- EditWorkoutModal component used for editing finished workouts
-- db.workouts.update called for all changes (React state sync)
-- Edits are visible instantly in the UI (HistoryList)
+- EditWorkoutModal component: full-featured editor for finished workouts
+  - Full-screen modal with scrollable content
+  - Metadata editing: title, notes, mood, bodyWeight, workoutDay (auto-saves on blur/change)
+  - Exercise management: add/remove/reorder exercises using ExercisePickerModal and TemplatePickerModal
+  - Set management: uses SetList and SetItem components for real-time editing
+  - All changes saved to IndexedDB immediately (db.workouts.update, db.workoutExercises, db.sets)
+  - Edits are visible instantly in the UI (HistoryList) via useLiveQuery hooks
 

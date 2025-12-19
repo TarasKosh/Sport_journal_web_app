@@ -8,7 +8,11 @@
 ## Feature List
 - Logging workouts with exercises, sets, and notes
 - History view of all completed workouts
-- Edit any finished workout: title, notes, mood, body weight, workout date
+- Full editing of finished workouts:
+  - Metadata: title, notes, mood, body weight, workout date
+  - Exercises: add, remove, reorder exercises
+  - Sets: add, remove, edit sets
+  - Set content: edit weight, reps, RPE, variations, failure status, and all other set parameters
 - Quick search and filtering by dates or keywords
 
 ## Business Rules
