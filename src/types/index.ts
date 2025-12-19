@@ -34,6 +34,7 @@ export interface Exercise {
     movementType?: MovementType;
     equipment?: string;
     aliases?: string[];
+    variations?: string[];
     isCustom: boolean;
     notes?: string;
 
@@ -82,6 +83,7 @@ export interface SetEntry {
     order: number;
     weight: number;
     reps: number;
+    variation?: string;
     rpe?: number;
     rir?: number;
     restSec?: number;

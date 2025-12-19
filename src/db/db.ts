@@ -83,6 +83,28 @@ export class AppDatabase extends Dexie {
             });
         });
 
+        this.version(4).stores({
+            settings: '++id',
+            exercises: '++id, &uuid, name, muscleGroup, updatedAt, deletedAt',
+            workouts: '++id, &uuid, startedAt, endedAt, workoutDay, updatedAt, deletedAt',
+            workoutExercises: '++id, &uuid, workoutId, exerciseId, updatedAt, deletedAt',
+            sets: '++id, &uuid, workoutExerciseId, updatedAt, deletedAt',
+            conflictLog: '++id, &uuid, entityType, entityId',
+            workoutTemplates: '++id, &uuid, name, isCustom, updatedAt, deletedAt'
+        }).upgrade(async (tx) => {
+            await tx.table('exercises').toCollection().modify((e: any) => {
+                if (!Array.isArray(e.variations)) {
+                    e.variations = [];
+                }
+            });
+
+            await tx.table('sets').toCollection().modify((s: any) => {
+                if (typeof s.variation === 'undefined') {
+                    s.variation = undefined;
+                }
+            });
+        });
+
         this.on('populate', () => this.seedData());
     }
 
@@ -123,7 +145,8 @@ export class AppDatabase extends Dexie {
             isCustom: false,
             updatedAt: now,
             equipment: 'gym',
-            aliases: []
+            aliases: [],
+            variations: []
         } as Exercise));
         
         await this.exercises.bulkAdd(exercisesWithUUIDs);

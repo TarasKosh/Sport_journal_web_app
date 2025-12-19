@@ -30,7 +30,10 @@ export const SetList: React.FC<SetListProps> = ({
 }) => {
     const [trackSides, setTrackSides] = React.useState(isUnilateral || false);
     
-    const exercise = useLiveQuery(() => db.exercises.get(workoutExercise.exerciseId), [workoutExercise.exerciseId]);
+    const exercise = useLiveQuery(
+        () => db.exercises.where('uuid').equals(workoutExercise.exerciseId).first(),
+        [workoutExercise.exerciseId]
+    );
 
     const sets = useLiveQuery(async () => {
         const s = await db.sets.where('workoutExerciseId').equals(workoutExercise.uuid).toArray();
@@ -46,10 +49,27 @@ export const SetList: React.FC<SetListProps> = ({
             order: sets ? sets.length : 0,
             weight: lastSet ? lastSet.weight : 0,
             reps: lastSet ? lastSet.reps : 0,
+            variation: lastSet ? lastSet.variation : undefined,
             rpe: lastSet ? lastSet.rpe : undefined,
             side: trackSides ? 'left' : undefined,
             isWarmup: false,
             isFailure: false,
+            updatedAt: Date.now()
+        });
+    };
+
+    const handleAddVariation = async () => {
+        if (!exercise?.id) return;
+        const raw = prompt('Add variation (e.g., Overhand / Underhand):');
+        const next = raw?.trim();
+        if (!next) return;
+
+        const current = Array.isArray(exercise.variations) ? exercise.variations : [];
+        const exists = current.some(v => v.toLowerCase() === next.toLowerCase());
+        if (exists) return;
+
+        await db.exercises.update(exercise.id, {
+            variations: [...current, next],
             updatedAt: Date.now()
         });
     };
@@ -74,6 +94,13 @@ export const SetList: React.FC<SetListProps> = ({
                             <p className="text-sm text-text-secondary leading-snug capitalize font-medium">
                                 {exercise?.muscleGroup?.replace('_', ' ') || 'General'}
                             </p>
+                            <button
+                                onClick={handleAddVariation}
+                                className="text-xs font-bold px-2 py-0.5 rounded transition-all bg-bg-tertiary text-text-tertiary hover:bg-bg-tertiary/80"
+                                title="Add variation"
+                            >
+                                Var+
+                            </button>
                             {/* L/R Toggle */}
                             <button
                                 onClick={() => setTrackSides(!trackSides)}
@@ -148,7 +175,13 @@ export const SetList: React.FC<SetListProps> = ({
             {/* Sets List */}
             <div className="flex flex-col px-4 pb-4 gap-1 bg-bg-tertiary/10">
                 {sets?.map((set, index) => (
-                    <SetItem key={set.uuid} set={set} index={index} isUnilateral={trackSides} />
+                    <SetItem
+                        key={set.uuid}
+                        set={set}
+                        index={index}
+                        isUnilateral={trackSides}
+                        variations={exercise?.variations || []}
+                    />
                 ))}
 
                 {/* Add Set Button - Prominent and visible */}

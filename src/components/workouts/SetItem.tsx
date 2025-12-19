@@ -9,12 +9,14 @@ interface SetItemProps {
     set: SetEntry;
     index: number;
     isUnilateral?: boolean;
+    variations?: string[];
 }
 
-export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnilateral }) => {
+export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnilateral, variations }) => {
     const [weight, setWeight] = useState(set.weight.toString());
     const [reps, setReps] = useState(set.reps.toString());
     const [rpe, setRpe] = useState(set.rpe?.toString() || '');
+    const [variation, setVariation] = useState(set.variation || '');
     const [side, setSide] = useState<'left' | 'right' | undefined>(set.side);
     const [isFailure, setIsFailure] = useState(set.isFailure);
     const [failureRep, setFailureRep] = useState(set.failureRep?.toString() || set.reps.toString());
@@ -23,6 +25,10 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
     const debouncedReps = useDebounce(reps, 500);
     const debouncedRpe = useDebounce(rpe, 500);
     const debouncedFailureRep = useDebounce(failureRep, 500);
+
+    useEffect(() => {
+        setVariation(set.variation || '');
+    }, [set.variation]);
 
     useEffect(() => {
         if (Number(debouncedWeight) === set.weight &&
@@ -61,6 +67,19 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
     };
 
     const activeRowClass = isFailure ? "rounded border-l-4 border-l-danger" : "hover:bg-bg-secondary/30 rounded border-l-4 border-l-transparent";
+
+    const variationOptions = React.useMemo(() => {
+        const base = Array.isArray(variations) ? variations : [];
+        const normalized = base.filter(v => typeof v === 'string' && v.trim().length > 0);
+        const unique: string[] = [];
+        for (const v of normalized) {
+            if (!unique.some(x => x.toLowerCase() === v.toLowerCase())) unique.push(v);
+        }
+        if (variation && !unique.some(x => x.toLowerCase() === variation.toLowerCase())) {
+            unique.unshift(variation);
+        }
+        return unique;
+    }, [variations, variation]);
 
     // Input field component with horizontal +/- buttons on the right
     const InputWithButtons = ({ 
@@ -166,6 +185,28 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
                 </button>
             </div>
 
+            {/* Variation */}
+            <div className="mb-2">
+                <div className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider mb-1 text-center">VARIATION</div>
+                <select
+                    value={variation}
+                    onChange={(e) => {
+                        const next = e.target.value;
+                        setVariation(next);
+                        db.sets.update(set.id!, {
+                            variation: next ? next : undefined,
+                            updatedAt: Date.now()
+                        }).catch(console.error);
+                    }}
+                    className="w-full h-12 px-4 rounded-xl bg-bg-secondary border-2 border-border focus:border-accent/60 outline-none text-text-primary font-semibold"
+                >
+                    <option value="">Default</option>
+                    {variationOptions.map(v => (
+                        <option key={v} value={v}>{v}</option>
+                    ))}
+                </select>
+            </div>
+
             {/* Input Fields - Responsive Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {/* KG */}
@@ -244,5 +285,8 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
     // Only re-render if set.id or isUnilateral changed
     return prevProps.set.id === nextProps.set.id && 
            prevProps.isUnilateral === nextProps.isUnilateral &&
-           prevProps.index === nextProps.index;
+           prevProps.index === nextProps.index &&
+           prevProps.set.updatedAt === nextProps.set.updatedAt &&
+           prevProps.set.variation === nextProps.set.variation &&
+           (prevProps.variations?.length || 0) === (nextProps.variations?.length || 0);
 });
