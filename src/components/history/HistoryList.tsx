@@ -2,9 +2,13 @@ import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { Card } from '../common/Card';
-import { Calendar } from 'lucide-react';
+import { Calendar, Edit2 } from 'lucide-react';
+import { EditWorkoutModal } from '../workouts/EditWorkoutModal';
 
 export const HistoryList: React.FC = () => {
+    const [editing, setEditing] = React.useState<null | number>(null); // id тренировки для редактирования
+    const [editingWorkout, setEditingWorkout] = React.useState<any>(null); // весь workout
+
     // Fetch completed workouts descending
     const workouts = useLiveQuery(async () => {
         return await db.workouts
@@ -34,6 +38,16 @@ export const HistoryList: React.FC = () => {
                     <div className="flex items-center gap-2 text-text-secondary text-sm">
                         <Calendar size={14} />
                         <span>{workoutDayToDate(workout.workoutDay).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                        <button
+                            className="ml-auto text-accent hover:text-accent-hover transition"
+                            title="Edit workout"
+                            onClick={() => {
+                                setEditing(workout.id);
+                                setEditingWorkout(workout);
+                            }}
+                        >
+                            <Edit2 size={18} />
+                        </button>
                     </div>
                     <div className="flex justify-between items-center">
                         <h3 className="font-bold text-lg">{workout.title || "Workout"}</h3>
@@ -46,6 +60,21 @@ export const HistoryList: React.FC = () => {
                     {/* Potential future expansion: List muscles trained or max volume */}
                 </Card>
             ))}
+            {editingWorkout && (
+                <EditWorkoutModal
+                    workout={editingWorkout}
+                    isOpen={!!editingWorkout}
+                    onClose={() => {
+                        setEditing(null);
+                        setEditingWorkout(null);
+                    }}
+                    onSaved={() => {
+                        setEditing(null);
+                        setEditingWorkout(null);
+                    }}
+                />
+            )}
+
         </div>
     );
 };
