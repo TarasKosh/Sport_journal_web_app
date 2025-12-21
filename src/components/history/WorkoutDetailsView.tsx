@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
-import type { Workout, WorkoutExercise, SetEntry, Exercise } from '../../types';
+import type { Workout, WorkoutExercise, SetEntry } from '../../types';
 import { ArrowLeft, Edit2, Calendar, Clock, Heart, Scale, FileText, ChevronDown, ChevronUp, Dumbbell } from 'lucide-react';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
