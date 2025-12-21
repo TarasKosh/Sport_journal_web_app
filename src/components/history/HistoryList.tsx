@@ -1,12 +1,16 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
-import { Card } from '../common/Card';
-import { Calendar, Edit2, Trash2 } from 'lucide-react';
 import { EditWorkoutModal } from '../workouts/EditWorkoutModal';
+import { WorkoutDetailsView } from './WorkoutDetailsView';
+import { WorkoutCard } from './WorkoutCard';
+import type { Workout } from '../../types';
 
 export const HistoryList: React.FC = () => {
-    const [editingWorkout, setEditingWorkout] = React.useState<any>(null); // весь workout
+    const [editingWorkout, setEditingWorkout] = React.useState<Workout | null>(null);
+    const [selectedWorkout, setSelectedWorkout] = React.useState<Workout | null>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const scrollPositionRef = useRef<number>(0);
 
     // Fetch completed workouts descending
     const workouts = useLiveQuery(async () => {
@@ -17,12 +21,45 @@ export const HistoryList: React.FC = () => {
             .toArray();
     });
 
+    // Save scroll position when leaving list view
+    useEffect(() => {
+        if (!selectedWorkout && scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollPositionRef.current;
+        }
+    }, [selectedWorkout]);
+
+    // Handle scroll position save
+    const handleScroll = () => {
+        if (scrollContainerRef.current && !selectedWorkout) {
+            scrollPositionRef.current = scrollContainerRef.current.scrollTop;
+        }
+    };
+
+    // Handle workout card click
+    const handleWorkoutClick = (workout: Workout, e: React.MouseEvent) => {
+        // Don't open details if clicking on action buttons
+        const target = e.target as HTMLElement;
+        if (target.closest('button')) {
+            return;
+        }
+        
+        if (scrollContainerRef.current) {
+            scrollPositionRef.current = scrollContainerRef.current.scrollTop;
+        }
+        setSelectedWorkout(workout);
+    };
+
+    // Handle back from details
+    const handleBackFromDetails = () => {
+        setSelectedWorkout(null);
+    };
+
     if (!workouts) return <div className="p-4 text-center">Loading...</div>;
 
-    const workoutDayToDate = (workoutDay: string) => {
-        const [y, m, d] = workoutDay.split('-').map(Number);
-        return new Date(y, (m || 1) - 1, d || 1);
-    };
+    // Show workout details if selected
+    if (selectedWorkout) {
+        return <WorkoutDetailsView workout={selectedWorkout} onBack={handleBackFromDetails} />;
+    }
 
     // Delete workout and all related data (exercises, sets)
     const handleDeleteWorkout = async (workout: any) => {
@@ -62,7 +99,11 @@ export const HistoryList: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col gap-3 p-4 pb-20">
+        <div 
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex flex-col gap-3 p-4 pb-20 overflow-y-auto h-full"
+        >
             <h1 className="text-xl font-bold mb-2">History</h1>
             {workouts.length === 0 && (
                 <div className="text-center text-text-secondary">
@@ -70,41 +111,17 @@ export const HistoryList: React.FC = () => {
                 </div>
             )}
             {workouts.map(workout => (
-                <Card key={workout.uuid} className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2 text-text-secondary text-sm">
-                        <Calendar size={14} />
-                        <span>{workoutDayToDate(workout.workoutDay).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                        <div className="ml-auto flex items-center gap-2">
-                            <button
-                                className="text-accent hover:text-accent-hover transition"
-                                title="Edit workout"
-                                onClick={() => {
-                                    if (workout.id) {
-                                        setEditingWorkout(workout);
-                                    }
-                                }}
-                            >
-                                <Edit2 size={18} />
-                            </button>
-                            <button
-                                className="text-danger hover:text-danger/80 transition"
-                                title="Delete workout"
-                                onClick={() => handleDeleteWorkout(workout)}
-                            >
-                                <Trash2 size={18} />
-                            </button>
-                        </div>
-                    </div>
-                    <div className="flex justify-between items-center">
-                        <h3 className="font-bold text-lg">{workout.title || "Workout"}</h3>
-                        <span className="text-xs bg-bg-tertiary px-2 py-1 rounded">
-                            {workout.endedAt ?
-                                Math.round((workout.endedAt - workout.startedAt) / 1000 / 60) + ' min'
-                                : 'Incomplete'}
-                        </span>
-                    </div>
-                    {/* Potential future expansion: List muscles trained or max volume */}
-                </Card>
+                <WorkoutCard
+                    key={workout.uuid}
+                    workout={workout}
+                    onEdit={(w) => {
+                        if (w.id) {
+                            setEditingWorkout(w);
+                        }
+                    }}
+                    onDelete={handleDeleteWorkout}
+                    onClick={handleWorkoutClick}
+                />
             ))}
             {editingWorkout && (
                 <EditWorkoutModal
