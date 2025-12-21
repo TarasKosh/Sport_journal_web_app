@@ -92,23 +92,24 @@ export const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, onEdit, onDel
           </button>
         </div>
       </div>
-      <div className="flex justify-between items-center">
-        <h3 className="font-bold text-lg">{workout.title || "Workout"}</h3>
+      <div className="flex justify-between items-start gap-2">
+        <h3 className="font-bold text-lg text-text-primary flex-1">{workout.title || "Workout"}</h3>
         {duration !== null && (
-          <span className="text-xs bg-bg-tertiary px-2 py-1 rounded">
+          <span className="text-xs font-semibold bg-accent/10 text-accent px-2.5 py-1 rounded-lg flex-shrink-0">
             {duration} min
           </span>
         )}
       </div>
       {/* Quick metrics */}
-      <div className="flex items-center gap-4 text-xs text-text-secondary pt-1">
-        <div className="flex items-center gap-1">
-          <Dumbbell size={14} />
-          <span>{metrics.exerciseCount} exercises</span>
+      <div className="flex items-center gap-3 text-xs pt-2 border-t border-border/50">
+        <div className="flex items-center gap-1.5 text-text-secondary">
+          <Dumbbell size={14} className="text-accent/70" />
+          <span className="font-medium">{metrics.exerciseCount} {metrics.exerciseCount === 1 ? 'exercise' : 'exercises'}</span>
         </div>
         {metrics.tonnage > 0 && (
-          <div>
-            <span>{metrics.tonnage} kg tonnage</span>
+          <div className="text-text-secondary">
+            <span className="font-semibold text-accent">{metrics.tonnage} kg</span>
+            <span className="text-text-tertiary ml-1">tonnage</span>
           </div>
         )}
       </div>

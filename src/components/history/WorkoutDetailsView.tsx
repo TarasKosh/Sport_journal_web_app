@@ -28,6 +28,13 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
     return list.sort((a, b) => a.order - b.order);
   }, [workout.uuid]);
 
+  // Expand all exercises by default when loaded
+  React.useEffect(() => {
+    if (workoutExercises && workoutExercises.length > 0) {
+      setExpandedExercises(new Set(workoutExercises.map(we => we.uuid)));
+    }
+  }, [workoutExercises]);
+
   // Load all sets for all exercises
   const allSets = useLiveQuery(async () => {
     if (!workoutExercises || workoutExercises.length === 0) return [];
@@ -142,29 +149,29 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
         </div>
 
         {/* Quick metadata */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-          <div className="flex items-center gap-2">
-            <Calendar size={16} className="text-white/80" />
-            <span className="text-white/90">
-              {workoutDate.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">
+            <Calendar size={16} className="text-white/90" />
+            <span className="text-white font-medium">
+              {workoutDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
             </span>
           </div>
           {duration !== null && (
-            <div className="flex items-center gap-2">
-              <Clock size={16} className="text-white/80" />
-              <span className="text-white/90">{duration} min</span>
+            <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">
+              <Clock size={16} className="text-white/90" />
+              <span className="text-white font-medium">{duration} min</span>
             </div>
           )}
           {workout.mood && (
-            <div className="flex items-center gap-2">
-              <Heart size={16} className="text-white/80" />
-              <span className="text-white/90">{getMoodEmoji(workout.mood)} {workout.mood}</span>
+            <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">
+              <Heart size={16} className="text-white/90" />
+              <span className="text-white font-medium">{getMoodEmoji(workout.mood)} {workout.mood}</span>
             </div>
           )}
           {workout.bodyWeight && (
-            <div className="flex items-center gap-2">
-              <Scale size={16} className="text-white/80" />
-              <span className="text-white/90">{workout.bodyWeight} kg</span>
+            <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">
+              <Scale size={16} className="text-white/90" />
+              <span className="text-white font-medium">{workout.bodyWeight} kg</span>
             </div>
           )}
         </div>
@@ -173,45 +180,48 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
       {/* Content */}
       <div className="flex-1 p-4 space-y-4 pb-20">
         {/* Summary Statistics */}
-        <Card className="p-4">
-          <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+        <Card className="p-5 bg-gradient-to-br from-bg-secondary to-bg-tertiary/30 border-2 border-accent/10">
+          <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-text-primary">
             <Dumbbell size={20} className="text-accent" />
             Summary
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div>
-              <div className="text-xs text-text-tertiary uppercase font-semibold mb-1">Exercises</div>
-              <div className="text-2xl font-bold text-text-primary">{summary.totalExercises}</div>
+            <div className="bg-bg-primary/50 p-3 rounded-lg border border-border/50">
+              <div className="text-xs text-text-tertiary uppercase font-bold tracking-wider mb-2">Exercises</div>
+              <div className="text-3xl font-bold text-text-primary">{summary.totalExercises}</div>
             </div>
-            <div>
-              <div className="text-xs text-text-tertiary uppercase font-semibold mb-1">Sets</div>
-              <div className="text-2xl font-bold text-text-primary">{summary.totalSets}</div>
+            <div className="bg-bg-primary/50 p-3 rounded-lg border border-border/50">
+              <div className="text-xs text-text-tertiary uppercase font-bold tracking-wider mb-2">Sets</div>
+              <div className="text-3xl font-bold text-text-primary">{summary.totalSets}</div>
             </div>
-            <div>
-              <div className="text-xs text-text-tertiary uppercase font-semibold mb-1">Reps</div>
-              <div className="text-2xl font-bold text-text-primary">{summary.totalReps || '—'}</div>
+            <div className="bg-bg-primary/50 p-3 rounded-lg border border-border/50">
+              <div className="text-xs text-text-tertiary uppercase font-bold tracking-wider mb-2">Reps</div>
+              <div className="text-3xl font-bold text-text-primary">{summary.totalReps || '—'}</div>
             </div>
-            <div>
-              <div className="text-xs text-text-tertiary uppercase font-semibold mb-1">Tonnage (kg)</div>
-              <div className="text-2xl font-bold text-text-primary">{summary.totalTonnage || '—'}</div>
+            <div className="bg-bg-primary/50 p-3 rounded-lg border border-border/50">
+              <div className="text-xs text-text-tertiary uppercase font-bold tracking-wider mb-2">Tonnage (kg)</div>
+              <div className="text-3xl font-bold text-accent">{summary.totalTonnage || '—'}</div>
             </div>
           </div>
         </Card>
 
         {/* Notes */}
         {workout.notes && (
-          <Card className="p-4">
-            <h2 className="text-lg font-bold mb-2 flex items-center gap-2">
+          <Card className="p-4 border-l-4 border-l-accent">
+            <h2 className="text-lg font-bold mb-3 flex items-center gap-2 text-text-primary">
               <FileText size={18} className="text-accent" />
               Notes
             </h2>
-            <p className="text-text-secondary whitespace-pre-wrap">{workout.notes}</p>
+            <p className="text-text-secondary whitespace-pre-wrap leading-relaxed">{workout.notes}</p>
           </Card>
         )}
 
         {/* Exercises List */}
-        <div className="space-y-3">
-          <h2 className="text-lg font-bold">Exercises</h2>
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
+            <Dumbbell size={22} className="text-accent" />
+            Exercises
+          </h2>
           {!workoutExercises || workoutExercises.length === 0 ? (
             <Card className="p-8 text-center">
               <p className="text-text-secondary">No exercises logged for this workout.</p>
@@ -263,64 +273,85 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ workoutExercise, sets, isEx
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden p-0">
       {/* Exercise Header */}
       <button
         onClick={onToggle}
-        className="w-full p-4 flex items-center justify-between hover:bg-bg-tertiary/50 transition-colors"
+        className="w-full p-4 flex items-center justify-between hover:bg-bg-tertiary/30 transition-colors rounded-t-lg"
       >
         <div className="flex items-center gap-3 flex-1 text-left">
-          <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
-            <Dumbbell size={24} className="text-accent" />
+          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-accent/20 to-accent/10 flex items-center justify-center flex-shrink-0 border border-accent/20">
+            <Dumbbell size={22} className="text-accent" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-lg text-text-primary truncate">{exercise.name}</h3>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs text-text-secondary capitalize">{exercise.muscleGroup?.replace('_', ' ')}</span>
+            <h3 className="font-bold text-lg text-text-primary truncate mb-1">{exercise.name}</h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-semibold text-text-secondary bg-bg-tertiary px-2 py-0.5 rounded capitalize">
+                {exercise.muscleGroup?.replace('_', ' ')}
+              </span>
+              <span className="text-xs text-text-tertiary font-medium">{sets.length} sets</span>
               {workoutExercise.notes && (
-                <span className="text-xs text-text-tertiary">• {workoutExercise.notes}</span>
+                <span className="text-xs text-text-tertiary italic">"{workoutExercise.notes}"</span>
               )}
-              <span className="text-xs text-text-tertiary">• {sets.length} sets</span>
             </div>
           </div>
         </div>
-        {isExpanded ? <ChevronUp size={20} className="text-text-tertiary" /> : <ChevronDown size={20} className="text-text-tertiary" />}
+        <div className="flex-shrink-0 ml-2">
+          {isExpanded ? (
+            <ChevronUp size={20} className="text-text-tertiary" />
+          ) : (
+            <ChevronDown size={20} className="text-text-tertiary" />
+          )}
+        </div>
       </button>
 
       {/* Sets Table */}
       {isExpanded && (
-        <div className="px-4 pb-4 border-t border-border">
+        <div className="px-4 pb-4 border-t border-border bg-bg-tertiary/20">
           {sets.length === 0 ? (
             <div className="py-8 text-center text-text-secondary text-sm">No sets logged</div>
           ) : (
-            <div className="overflow-x-auto mt-4">
+            <div className="overflow-x-auto mt-3">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-text-tertiary text-xs uppercase font-semibold">
-                    <th className="text-left py-2 px-2">Set</th>
-                    <th className="text-right py-2 px-2">Weight (kg)</th>
-                    <th className="text-right py-2 px-2">Reps</th>
-                    <th className="text-right py-2 px-2">RPE</th>
-                    {sets.some(s => s.variation) && <th className="text-left py-2 px-2">Variation</th>}
-                    {sets.some(s => s.isFailure) && <th className="text-center py-2 px-2">Failure</th>}
+                  <tr className="border-b-2 border-border text-text-tertiary text-xs uppercase font-bold tracking-wider">
+                    <th className="text-left py-3 px-3">#</th>
+                    <th className="text-right py-3 px-3">Weight</th>
+                    <th className="text-right py-3 px-3">Reps</th>
+                    <th className="text-right py-3 px-3">RPE</th>
+                    {sets.some(s => s.variation) && <th className="text-left py-3 px-3">Variation</th>}
+                    {sets.some(s => s.isFailure) && <th className="text-center py-3 px-3">Failure</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {sets.map((set, index) => (
-                    <tr key={set.uuid} className="border-b border-border/50 hover:bg-bg-tertiary/30">
-                      <td className="py-2 px-2 font-semibold text-text-primary">{index + 1}</td>
-                      <td className="py-2 px-2 text-right text-text-primary">{set.weight || '—'}</td>
-                      <td className={`py-2 px-2 text-right ${set.isFailure ? 'text-danger font-semibold' : 'text-text-primary'}`}>
+                    <tr 
+                      key={set.uuid} 
+                      className={`border-b border-border/30 transition-colors ${
+                        set.isFailure 
+                          ? 'bg-danger/5 hover:bg-danger/10' 
+                          : 'hover:bg-bg-secondary/50'
+                      }`}
+                    >
+                      <td className="py-3 px-3 font-bold text-text-primary">{index + 1}</td>
+                      <td className="py-3 px-3 text-right font-semibold text-text-primary">{set.weight || '—'}</td>
+                      <td className={`py-3 px-3 text-right font-semibold ${set.isFailure ? 'text-danger' : 'text-text-primary'}`}>
                         {set.reps || '—'}
-                        {set.isFailure && set.failureRep && ` (failed @ ${set.failureRep})`}
+                        {set.isFailure && set.failureRep && (
+                          <span className="text-xs text-danger/70 ml-1">(@{set.failureRep})</span>
+                        )}
                       </td>
-                      <td className="py-2 px-2 text-right text-text-secondary">{set.rpe || '—'}</td>
+                      <td className="py-3 px-3 text-right text-text-secondary">{set.rpe || '—'}</td>
                       {sets.some(s => s.variation) && (
-                        <td className="py-2 px-2 text-text-secondary text-xs">{set.variation || '—'}</td>
+                        <td className="py-3 px-3 text-text-secondary text-xs">{set.variation || '—'}</td>
                       )}
                       {sets.some(s => s.isFailure) && (
-                        <td className="py-2 px-2 text-center">
-                          {set.isFailure ? <span className="text-danger font-semibold">✕</span> : '—'}
+                        <td className="py-3 px-3 text-center">
+                          {set.isFailure ? (
+                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-danger/20 text-danger font-bold text-xs">✕</span>
+                          ) : (
+                            <span className="text-text-tertiary">—</span>
+                          )}
                         </td>
                       )}
                     </tr>
