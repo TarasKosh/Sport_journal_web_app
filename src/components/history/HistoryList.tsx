@@ -6,7 +6,6 @@ import { Calendar, Edit2 } from 'lucide-react';
 import { EditWorkoutModal } from '../workouts/EditWorkoutModal';
 
 export const HistoryList: React.FC = () => {
-    const [editing, setEditing] = React.useState<null | number>(null); // id тренировки для редактирования
     const [editingWorkout, setEditingWorkout] = React.useState<any>(null); // весь workout
 
     // Fetch completed workouts descending
@@ -42,8 +41,9 @@ export const HistoryList: React.FC = () => {
                             className="ml-auto text-accent hover:text-accent-hover transition"
                             title="Edit workout"
                             onClick={() => {
-                                setEditing(workout.id);
-                                setEditingWorkout(workout);
+                                if (workout.id) {
+                                    setEditingWorkout(workout);
+                                }
                             }}
                         >
                             <Edit2 size={18} />
@@ -65,11 +65,9 @@ export const HistoryList: React.FC = () => {
                     workout={editingWorkout}
                     isOpen={!!editingWorkout}
                     onClose={() => {
-                        setEditing(null);
                         setEditingWorkout(null);
                     }}
                     onSaved={() => {
-                        setEditing(null);
                         setEditingWorkout(null);
                     }}
                 />

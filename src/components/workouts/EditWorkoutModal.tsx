@@ -3,7 +3,7 @@ import type { Workout, WorkoutExercise } from '../../types';
 import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Button } from '../common/Button';
-import { X, Plus, Dumbbell, ChevronUp, ChevronDown, Trash2, CheckCircle } from 'lucide-react';
+import { X, Plus, Dumbbell, CheckCircle } from 'lucide-react';
 import { ExercisePickerModal } from './ExercisePickerModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { SetList } from './WorkoutSetList';
@@ -203,8 +203,11 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
                 className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm" 
                 value={mood} 
                 onChange={e => {
-                  setMood(e.target.value as Workout['mood']);
-                  handleSaveMetadata();
+                  const newMood = e.target.value as Workout['mood'];
+                  if (newMood) {
+                    setMood(newMood);
+                    handleSaveMetadata();
+                  }
                 }}
               >
                 <option value="great">Great</option>
