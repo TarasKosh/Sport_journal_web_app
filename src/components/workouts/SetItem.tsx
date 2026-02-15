@@ -12,6 +12,62 @@ interface SetItemProps {
     variations?: string[];
 }
 
+// Defined outside SetItem so React keeps a stable component identity across re-renders,
+// preventing input focus loss when parent state changes.
+const InputWithButtons = ({
+    value,
+    onChange,
+    onIncrement,
+    onDecrement,
+    placeholder = "0",
+    isDanger = false
+}: {
+    value: string;
+    onChange: (val: string) => void;
+    onIncrement: () => void;
+    onDecrement: () => void;
+    placeholder?: string;
+    isDanger?: boolean;
+}) => (
+    <div className={clsx(
+        "flex items-center border-2 rounded-xl overflow-hidden transition-all h-14 w-full",
+        isDanger ? "border-danger bg-bg-secondary" : "border-border bg-bg-secondary hover:border-accent/40"
+    )}>
+        <input
+            type="number"
+            inputMode="decimal"
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            onFocus={e => e.target.select()}
+            className={clsx(
+                "flex-1 bg-transparent text-center text-2xl font-bold outline-none px-2 hide-number-arrows min-w-0 pointer-events-auto",
+                isDanger ? "text-danger placeholder:text-danger/30" : "text-text-primary placeholder:text-text-tertiary/30"
+            )}
+            placeholder={placeholder}
+        />
+        <div className="flex items-center h-full border-l-2 border-border flex-shrink-0">
+            <button
+                onClick={onDecrement}
+                className={clsx(
+                    "h-full px-3 transition-colors flex items-center justify-center border-r-2 border-border",
+                    isDanger ? "hover:bg-danger/10 active:bg-danger/20" : "hover:bg-accent/10 active:bg-accent/20"
+                )}
+            >
+                <Minus size={18} className={isDanger ? "text-danger" : "text-text-secondary"} strokeWidth={3} />
+            </button>
+            <button
+                onClick={onIncrement}
+                className={clsx(
+                    "h-full px-3 transition-colors flex items-center justify-center",
+                    isDanger ? "hover:bg-danger/10 active:bg-danger/20" : "hover:bg-accent/10 active:bg-accent/20"
+                )}
+            >
+                <Plus size={18} className={isDanger ? "text-danger" : "text-text-secondary"} strokeWidth={3} />
+            </button>
+        </div>
+    </div>
+);
+
 export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnilateral, variations }) => {
     const [weight, setWeight] = useState(set.weight.toString());
     const [reps, setReps] = useState(set.reps.toString());
@@ -81,60 +137,7 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
         return unique;
     }, [variations, variation]);
 
-    // Input field component with horizontal +/- buttons on the right
-    const InputWithButtons = ({ 
-        value, 
-        onChange, 
-        onIncrement, 
-        onDecrement, 
-        placeholder = "0",
-        isDanger = false 
-    }: { 
-        value: string; 
-        onChange: (val: string) => void; 
-        onIncrement: () => void; 
-        onDecrement: () => void; 
-        placeholder?: string;
-        isDanger?: boolean;
-    }) => (
-        <div className={clsx(
-            "flex items-center border-2 rounded-xl overflow-hidden transition-all h-14 w-full",
-            isDanger ? "border-danger bg-bg-secondary" : "border-border bg-bg-secondary hover:border-accent/40"
-        )}>
-            <input
-                type="number"
-                inputMode="decimal"
-                value={value}
-                onChange={e => onChange(e.target.value)}
-                onFocus={e => e.target.select()}
-                className={clsx(
-                    "flex-1 bg-transparent text-center text-2xl font-bold outline-none px-2 hide-number-arrows min-w-0 pointer-events-auto",
-                    isDanger ? "text-danger placeholder:text-danger/30" : "text-text-primary placeholder:text-text-tertiary/30"
-                )}
-                placeholder={placeholder}
-            />
-            <div className="flex items-center h-full border-l-2 border-border flex-shrink-0">
-                <button
-                    onClick={onDecrement}
-                    className={clsx(
-                        "h-full px-3 transition-colors flex items-center justify-center border-r-2 border-border",
-                        isDanger ? "hover:bg-danger/10 active:bg-danger/20" : "hover:bg-accent/10 active:bg-accent/20"
-                    )}
-                >
-                    <Minus size={18} className={isDanger ? "text-danger" : "text-text-secondary"} strokeWidth={3} />
-                </button>
-                <button
-                    onClick={onIncrement}
-                    className={clsx(
-                        "h-full px-3 transition-colors flex items-center justify-center",
-                        isDanger ? "hover:bg-danger/10 active:bg-danger/20" : "hover:bg-accent/10 active:bg-accent/20"
-                    )}
-                >
-                    <Plus size={18} className={isDanger ? "text-danger" : "text-text-secondary"} strokeWidth={3} />
-                </button>
-            </div>
-        </div>
-    );
+
 
     return (
         <div className={clsx("py-2 px-2 transition-colors", activeRowClass)}>
@@ -251,8 +254,8 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
                     onClick={toggleFailure}
                     className={clsx(
                         "flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all font-medium text-xs",
-                        isFailure 
-                            ? "bg-red-600 border-2 border-red-700 text-white shadow-lg" 
+                        isFailure
+                            ? "bg-red-600 border-2 border-red-700 text-white shadow-lg"
                             : "border-2 border-border bg-white text-text-secondary hover:border-accent hover:bg-accent/5 hover:text-accent"
                     )}
                 >
@@ -283,10 +286,10 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
     );
 }, (prevProps, nextProps) => {
     // Only re-render if set.id or isUnilateral changed
-    return prevProps.set.id === nextProps.set.id && 
-           prevProps.isUnilateral === nextProps.isUnilateral &&
-           prevProps.index === nextProps.index &&
-           prevProps.set.updatedAt === nextProps.set.updatedAt &&
-           prevProps.set.variation === nextProps.set.variation &&
-           (prevProps.variations?.length || 0) === (nextProps.variations?.length || 0);
+    return prevProps.set.id === nextProps.set.id &&
+        prevProps.isUnilateral === nextProps.isUnilateral &&
+        prevProps.index === nextProps.index &&
+        prevProps.set.updatedAt === nextProps.set.updatedAt &&
+        prevProps.set.variation === nextProps.set.variation &&
+        (prevProps.variations?.length || 0) === (nextProps.variations?.length || 0);
 });
