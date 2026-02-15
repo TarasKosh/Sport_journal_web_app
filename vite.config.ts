@@ -10,7 +10,7 @@ export default defineConfig({
     VitePWA({
       injectRegister: null,
       registerType: 'autoUpdate',
-      includeAssets: ['vite.svg'],
+      includeAssets: ['icon.svg'],
       devOptions: {
         enabled: true,
       },
@@ -24,7 +24,7 @@ export default defineConfig({
         theme_color: '#ffffff',
         icons: [
           {
-            src: 'vite.svg',
+            src: 'icon.svg',
             sizes: 'any',
             type: 'image/svg+xml',
           },
