@@ -665,20 +665,26 @@ const MultiLineChart: React.FC<{ data: MuscleWeekData[] }> = ({ data }) => {
             </div>
 
             {/* Legend */}
+            {/* Legend */}
             <div className="mt-4 flex flex-wrap justify-center gap-x-6 gap-y-2">
                 {muscleGroups.map((mg, i) => (
                     <div key={mg} className="flex items-center gap-2">
                         <div
-                            className="h-3 w-3 rounded-full shadow-sm"
-                            style={{ backgroundColor: MUSCLE_COLORS[i % MUSCLE_COLORS.length] }}
+                            className="h-3 w-3 rounded-full flex-shrink-0"
+                            style={{
+                                backgroundColor: MUSCLE_COLORS[i % MUSCLE_COLORS.length],
+                                minWidth: '0.75rem',
+                                minHeight: '0.75rem'
+                            }}
                         />
-                        <span className="text-xs font-medium text-text-primary capitalize">
+                        <span className="text-xs font-medium text-text-primary capitalize whitespace-nowrap">
                             {mg.replace(/_/g, ' ')}
                         </span>
                     </div>
                 ))}
             </div>
         </div>
+
     );
 };
 
