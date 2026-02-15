@@ -558,9 +558,10 @@ const StackedAreaChart: React.FC<{ data: MuscleWeekData[] }> = ({ data }) => {
             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
                 {muscleGroups.map((mg, i) => (
                     <div key={mg} className="flex items-center gap-1.5">
-                        <svg width="12" height="12" className="flex-shrink-0">
-                            <rect width="12" height="12" rx="2" fill={MUSCLE_COLORS[i % MUSCLE_COLORS.length]} />
-                        </svg>
+                        <div
+                            className="w-3 h-3 rounded-sm flex-shrink-0"
+                            style={{ backgroundColor: MUSCLE_COLORS[i % MUSCLE_COLORS.length] }}
+                        />
                         <span className="text-xs text-text-secondary capitalize">{mg.replace(/_/g, ' ')}</span>
                     </div>
                 ))}
@@ -669,19 +670,12 @@ const MultiLineChart: React.FC<{ data: MuscleWeekData[] }> = ({ data }) => {
             {/* Legend */}
             <div className="mt-4 flex flex-wrap justify-center gap-x-6 gap-y-2">
                 {muscleGroups.map((mg, i) => {
-                    const color = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#14b8a6', '#a855f7', '#fb7185'][i % 12];
+                    const color = MUSCLE_COLORS[i % MUSCLE_COLORS.length];
                     return (
                         <div key={mg} className="flex items-center gap-2">
-                            <span
-                                className="rounded-full shadow-sm border border-black/10"
-                                style={{
-                                    display: 'inline-block',
-                                    width: '12px',
-                                    height: '12px',
-                                    minWidth: '12px',
-                                    backgroundColor: color,
-                                    flexShrink: 0
-                                }}
+                            <div
+                                className="w-3 h-3 rounded-full shadow-sm border border-black/10 flex-shrink-0"
+                                style={{ backgroundColor: color }}
                             />
                             <span className="text-xs font-medium text-text-primary capitalize whitespace-nowrap">
                                 {mg.replace(/_/g, ' ')}
