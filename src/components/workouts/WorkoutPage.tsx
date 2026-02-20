@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { Button } from '../common/Button';
@@ -13,6 +13,12 @@ export const WorkoutPage: React.FC = () => {
     const [isDayPickerOpen, setIsDayPickerOpen] = useState(false);
     const [draftWorkoutDay, setDraftWorkoutDay] = useState<string>(selectedWorkoutDay);
 
+    // Pre-workout inputs (on start screen)
+    const [startBodyWeight, setStartBodyWeight] = useState<string>('');
+
+    // Post-workout notes (on finish screen)
+    const [notesInput, setNotesInput] = useState<string>('');
+
     // Query for an active workout (endedAt is undefined or null)
     // Query for active workouts (should be 0 or 1)
     const activeWorkouts = useLiveQuery(async () => {
@@ -25,6 +31,13 @@ export const WorkoutPage: React.FC = () => {
         if (!finishedWorkoutUuid) return null;
         return await db.workouts.where('uuid').equals(finishedWorkoutUuid).first();
     }, [finishedWorkoutUuid]);
+
+    // Update local state when finishedWorkout loads (notes only)
+    useEffect(() => {
+        if (finishedWorkout) {
+            setNotesInput(finishedWorkout.notes || '');
+        }
+    }, [finishedWorkout]);
 
     const workoutsForSelectedDay = useLiveQuery(async () => {
         return await db.workouts
@@ -43,6 +56,8 @@ export const WorkoutPage: React.FC = () => {
                 uuid: uuidv4(),
                 startedAt: now,
                 workoutDay,
+                // Save body weight at the start so it's available during the workout
+                bodyWeight: startBodyWeight ? parseFloat(startBodyWeight) : undefined,
                 updatedAt: now
             });
         } catch (e) {
@@ -50,7 +65,13 @@ export const WorkoutPage: React.FC = () => {
         }
     };
 
-    const handleSaveFinished = () => {
+    const handleSaveFinished = async () => {
+        if (finishedWorkout) {
+            await db.workouts.update(finishedWorkout.id!, {
+                notes: notesInput.trim() || undefined,
+                updatedAt: Date.now()
+            });
+        }
         setFinishedWorkoutUuid(null);
     };
 
@@ -86,25 +107,38 @@ export const WorkoutPage: React.FC = () => {
 
     if (finishedWorkoutUuid) {
         return (
-            <div className="flex flex-col items-center justify-center h-full p-6 text-center space-y-6">
-                <div className="bg-bg-tertiary p-8 rounded-full">
-                    <CheckCircle size={52} className="text-success" />
+            <div className="flex flex-col items-center flex-1 h-full p-6 space-y-6 overflow-y-auto pb-24">
+                <div className="bg-bg-tertiary p-6 rounded-full mt-4">
+                    <CheckCircle size={48} className="text-success" />
                 </div>
-                <div>
-                    <h1 className="text-2xl font-bold mb-2">Workout Finished</h1>
-                    <p className="text-text-secondary">
-                        {finishedWorkout ? 'Saved to history.' : 'Loading...'}
+                <div className="text-center">
+                    <h1 className="text-2xl font-bold mb-1 text-text-primary">Workout Finished!</h1>
+                    <p className="text-text-secondary text-sm">
+                        {finishedWorkout ? 'Great job! Add any final details.' : 'Loading...'}
                     </p>
                 </div>
-                <div className="flex flex-col gap-3 w-full max-w-xs">
-                    <Button size="lg" onClick={handleSaveFinished} fullWidth className="shadow-lg">
-                        Save
+
+                {finishedWorkout && (
+                    <div className="w-full max-w-xs flex flex-col gap-4 text-left mt-2">
+                        <div>
+                            <label className="block text-xs font-bold text-text-tertiary mb-1.5 uppercase tracking-wide">Workout Notes</label>
+                            <textarea
+                                rows={2}
+                                className="w-full px-4 py-3 rounded-xl bg-bg-secondary border border-border/60 focus:border-accent outline-none text-text-primary resize-none"
+                                placeholder="How did you feel today?"
+                                value={notesInput}
+                                onChange={e => setNotesInput(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                <div className="flex flex-col gap-3 w-full max-w-xs pt-4">
+                    <Button size="lg" onClick={handleSaveFinished} fullWidth className="shadow-lg font-bold">
+                        Save to History
                     </Button>
-                    <Button size="lg" variant="secondary" onClick={handleStartWorkout} fullWidth>
-                        Start
-                    </Button>
-                    <Button size="lg" variant="danger" onClick={handleDiscardFinished} fullWidth className="gap-2">
-                        <Trash2 size={18} /> Discard
+                    <Button size="md" variant="danger" onClick={handleDiscardFinished} fullWidth className="gap-2 mt-4 bg-transparent text-danger hover:bg-danger/10 shadow-none border border-danger/20">
+                        <Trash2 size={18} /> Discard Workout
                     </Button>
                 </div>
             </div>
@@ -118,9 +152,9 @@ export const WorkoutPage: React.FC = () => {
             </div>
             <div>
                 {workoutsForSelectedDay && workoutsForSelectedDay.length > 0 && (
-                <div className="w-full max-w-md pt-2">
-                    <p className="text-text-secondary">You have already logged workouts for this day.</p>
-                </div>
+                    <div className="w-full max-w-md pt-2">
+                        <p className="text-text-secondary">You have already logged workouts for this day.</p>
+                    </div>
                 )}
                 <p className="text-text-secondary">Start a new workout to log your sets.</p>
             </div>
@@ -135,6 +169,20 @@ export const WorkoutPage: React.FC = () => {
                 <Calendar size={18} className="text-text-secondary" />
                 <span className="font-medium">{workoutDayToDate(selectedWorkoutDay).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</span>
             </button>
+
+            {/* Body weight input before starting */}
+            <div className="w-full max-w-xs">
+                <label className="block text-xs font-bold text-text-tertiary mb-1.5 uppercase tracking-wide text-left">Body Weight (kg)</label>
+                <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    className="w-full px-4 py-3 rounded-xl bg-bg-secondary border border-border/60 focus:border-accent outline-none text-text-primary font-medium text-center text-lg"
+                    placeholder="e.g. 75.5"
+                    value={startBodyWeight}
+                    onChange={e => setStartBodyWeight(e.target.value)}
+                />
+            </div>
 
             <Button size="lg" onClick={handleStartWorkout} fullWidth className="max-w-xs shadow-lg shadow-accent/20">
                 Start

@@ -15,6 +15,10 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
     const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
     const [workoutDuration, setWorkoutDuration] = useState('00:00');
 
+    // Two-tap confirm states
+    const [confirmDiscard, setConfirmDiscard] = useState(false);
+    const [confirmDeleteExerciseId, setConfirmDeleteExerciseId] = useState<number | null>(null);
+
     // Update workout duration every second
     React.useEffect(() => {
         const interval = setInterval(() => {
@@ -53,7 +57,7 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
             if (!template) return;
 
             const count = await db.workoutExercises.where('workoutId').equals(workout.uuid).count();
-            
+
             // Add all exercises from template
             for (let i = 0; i < template.exercises.length; i++) {
                 await db.workoutExercises.add({
@@ -64,7 +68,7 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
                     updatedAt: Date.now()
                 });
             }
-            
+
             setIsTemplatePickerOpen(false);
         } catch (e) {
             console.error("Failed to add template", e);
@@ -72,45 +76,51 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
     };
 
     const handleFinish = async () => {
-        if (confirm('Finish workout?')) {
-            await db.workouts.update(workout.id!, {
-                endedAt: Date.now(),
-                updatedAt: Date.now()
-            });
-            onFinished?.(workout.uuid);
-        }
+        await db.workouts.update(workout.id!, {
+            endedAt: Date.now(),
+            updatedAt: Date.now()
+        });
+        onFinished?.(workout.uuid);
     };
 
     const cancelWorkout = async () => {
-        if (confirm('Delete this workout? This cannot be undone.')) {
-            await db.workouts.delete(workout.id!);
-            onDiscarded?.(workout.uuid);
+        if (!confirmDiscard) {
+            setConfirmDiscard(true);
+            setTimeout(() => setConfirmDiscard(false), 3000);
+            return;
         }
+        await db.workouts.delete(workout.id!);
+        onDiscarded?.(workout.uuid);
     };
 
     const deleteExercise = async (workoutExerciseId: number) => {
-        if (confirm('Remove this exercise from workout?')) {
-            const we = exercises?.find(e => e.id === workoutExerciseId);
-            if (!we) return;
-            
-            // Delete all sets for this exercise
-            const sets = await db.sets.where('workoutExerciseId').equals(we.uuid).toArray();
-            await db.sets.bulkDelete(sets.map(s => s.id!));
-            // Delete the workout exercise
-            await db.workoutExercises.delete(workoutExerciseId);
-            // Reorder remaining exercises
-            if (exercises) {
-                const remaining = exercises.filter(e => e.id !== workoutExerciseId);
-                for (let i = 0; i < remaining.length; i++) {
-                    await db.workoutExercises.update(remaining[i].id!, { order: i, updatedAt: Date.now() });
-                }
+        if (confirmDeleteExerciseId !== workoutExerciseId) {
+            setConfirmDeleteExerciseId(workoutExerciseId);
+            setTimeout(() => setConfirmDeleteExerciseId(null), 3000);
+            return;
+        }
+
+        const we = exercises?.find(e => e.id === workoutExerciseId);
+        if (!we) return;
+
+        // Delete all sets for this exercise
+        const sets = await db.sets.where('workoutExerciseId').equals(we.uuid).toArray();
+        await db.sets.bulkDelete(sets.map(s => s.id!));
+        // Delete the workout exercise
+        await db.workoutExercises.delete(workoutExerciseId);
+        // Reorder remaining exercises
+        if (exercises) {
+            const remaining = exercises.filter(e => e.id !== workoutExerciseId);
+            for (let i = 0; i < remaining.length; i++) {
+                await db.workoutExercises.update(remaining[i].id!, { order: i, updatedAt: Date.now() });
             }
         }
+        setConfirmDeleteExerciseId(null);
     };
 
     const moveExercise = async (index: number, direction: 'up' | 'down') => {
         if (!exercises) return;
-        
+
         const newIndex = direction === 'up' ? index - 1 : index + 1;
         if (newIndex < 0 || newIndex >= exercises.length) return;
 
@@ -142,16 +152,20 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
-                            <button 
-                                onClick={cancelWorkout} 
-                                className="w-11 h-11 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center transition-colors"
+                            <button
+                                onClick={cancelWorkout}
+                                className={`h-11 px-3 rounded-xl flex items-center justify-center transition-colors gap-2 font-bold text-sm ${confirmDiscard
+                                        ? 'bg-danger text-white hover:bg-danger/90'
+                                        : 'bg-white/15 text-white hover:bg-white/25 w-11'
+                                    }`}
                                 title="Discard Workout"
                             >
                                 <Trash2 size={18} />
+                                {confirmDiscard && <span>Sure?</span>}
                             </button>
-                            <Button 
-                                size="md" 
-                                onClick={handleFinish} 
+                            <Button
+                                size="md"
+                                onClick={handleFinish}
                                 className="bg-white text-accent hover:bg-white/90 font-bold shadow-md gap-2 px-5"
                             >
                                 <CheckCircle size={18} /> Finish
@@ -174,12 +188,13 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
                 )}
 
                 {exercises?.map((we, index) => (
-                    <WorkoutExerciseItem 
-                        key={we.uuid} 
+                    <WorkoutExerciseItem
+                        key={we.uuid}
                         workoutExercise={we}
                         index={index}
                         totalCount={exercises.length}
                         onDelete={() => deleteExercise(we.id!)}
+                        isConfirmingDelete={confirmDeleteExerciseId === we.id}
                         onMoveUp={() => moveExercise(index, 'up')}
                         onMoveDown={() => moveExercise(index, 'down')}
                     />
@@ -198,7 +213,7 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
                             <span className="text-sm font-bold text-accent">Add Template</span>
                         </div>
                     </button>
-                    
+
                     <button
                         onClick={() => setIsPickerOpen(true)}
                         className="py-5 px-4 rounded-2xl border-2 border-dashed border-accent/30 bg-accent/5 hover:bg-accent/10 hover:border-accent/50 transition-all active:scale-[0.98]"
@@ -230,26 +245,28 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
 };
 
 // Sub-component wrapper to fetch exercise name cleanly
-const WorkoutExerciseItem: React.FC<{ 
+const WorkoutExerciseItem: React.FC<{
     workoutExercise: WorkoutExercise;
     index: number;
     totalCount: number;
     onDelete: () => void;
+    isConfirmingDelete: boolean;
     onMoveUp: () => void;
     onMoveDown: () => void;
-}> = ({ workoutExercise, index, totalCount, onDelete, onMoveUp, onMoveDown }) => {
+}> = ({ workoutExercise, index, totalCount, onDelete, isConfirmingDelete, onMoveUp, onMoveDown }) => {
     const exercise = useLiveQuery(() => db.exercises.where('uuid').equals(workoutExercise.exerciseId).first());
 
     if (!exercise) return <div className="animate-pulse bg-bg-tertiary h-20 rounded-lg"></div>;
 
     return (
-        <SetList 
-            workoutExercise={workoutExercise} 
-            exerciseName={exercise.name} 
+        <SetList
+            workoutExercise={workoutExercise}
+            exerciseName={exercise.name}
             isUnilateral={exercise.isUnilateral}
             index={index}
             totalCount={totalCount}
             onDelete={onDelete}
+            isConfirmingDelete={isConfirmingDelete}
             onMoveUp={onMoveUp}
             onMoveDown={onMoveDown}
         />

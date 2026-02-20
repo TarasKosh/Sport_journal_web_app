@@ -14,22 +14,24 @@ interface SetListProps {
     index?: number;
     totalCount?: number;
     onDelete?: () => void;
+    isConfirmingDelete?: boolean;
     onMoveUp?: () => void;
     onMoveDown?: () => void;
 }
 
-export const SetList: React.FC<SetListProps> = ({ 
-    workoutExercise, 
-    exerciseName, 
+export const SetList: React.FC<SetListProps> = ({
+    workoutExercise,
+    exerciseName,
     isUnilateral,
     index,
     totalCount,
     onDelete,
+    isConfirmingDelete,
     onMoveUp,
     onMoveDown
 }) => {
     const [trackSides, setTrackSides] = React.useState(isUnilateral || false);
-    
+
     const exercise = useLiveQuery(
         () => db.exercises.where('uuid').equals(workoutExercise.exerciseId).first(),
         [workoutExercise.exerciseId]
@@ -43,12 +45,58 @@ export const SetList: React.FC<SetListProps> = ({
     const handleAddSet = async () => {
         const lastSet = sets && sets.length > 0 ? sets[sets.length - 1] : null;
 
+        let defaultWeight = 0;
+        let defaultReps = 0;
+
+        if (lastSet) {
+            defaultWeight = lastSet.weight;
+            defaultReps = lastSet.reps;
+        } else {
+            // First set: determine default weight
+            try {
+                // Priority 1: body weight entered at workout start
+                const currentWorkout = await db.workouts
+                    .where('uuid')
+                    .equals(workoutExercise.workoutId)
+                    .first();
+                if (currentWorkout?.bodyWeight) {
+                    defaultWeight = currentWorkout.bodyWeight;
+                }
+
+                // Priority 2 (fallback): last historical weight for this exercise
+                if (defaultWeight === 0) {
+                    const pastWorkoutExercises = await db.workoutExercises
+                        .where('exerciseId')
+                        .equals(workoutExercise.exerciseId)
+                        .toArray();
+
+                    const pastIds = pastWorkoutExercises
+                        .filter(we => we.uuid !== workoutExercise.uuid)
+                        .map(we => we.uuid);
+
+                    if (pastIds.length > 0) {
+                        const pastSets = await db.sets
+                            .where('workoutExerciseId')
+                            .anyOf(pastIds)
+                            .toArray();
+
+                        if (pastSets.length > 0) {
+                            pastSets.sort((a, b) => b.updatedAt - a.updatedAt);
+                            defaultWeight = pastSets[0].weight;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to fetch default weight", error);
+            }
+        }
+
         await db.sets.add({
             uuid: uuidv4(),
             workoutExerciseId: workoutExercise.uuid,
             order: sets ? sets.length : 0,
-            weight: lastSet ? lastSet.weight : 0,
-            reps: lastSet ? lastSet.reps : 0,
+            weight: defaultWeight,
+            reps: defaultReps,
             variation: lastSet ? lastSet.variation : undefined,
             rpe: lastSet ? lastSet.rpe : undefined,
             side: trackSides ? 'left' : undefined,
@@ -104,11 +152,10 @@ export const SetList: React.FC<SetListProps> = ({
                             {/* L/R Toggle */}
                             <button
                                 onClick={() => setTrackSides(!trackSides)}
-                                className={`text-xs font-bold px-2 py-0.5 rounded transition-all ${
-                                    trackSides 
-                                        ? 'bg-accent text-white' 
-                                        : 'bg-bg-tertiary text-text-tertiary hover:bg-bg-tertiary/80'
-                                }`}
+                                className={`text-xs font-bold px-2 py-0.5 rounded transition-all ${trackSides
+                                    ? 'bg-accent text-white'
+                                    : 'bg-bg-tertiary text-text-tertiary hover:bg-bg-tertiary/80'
+                                    }`}
                                 title="Track left/right sides separately"
                             >
                                 L/R
@@ -146,25 +193,29 @@ export const SetList: React.FC<SetListProps> = ({
                         <div className="flex flex-col items-center gap-0.5">
                             <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Sets</span>
                             <span className="text-xl font-bold text-text-primary">{sets?.length || 0}</span>
+                        </div>
+                        <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Reps</span>
+                            <span className="text-xl font-bold text-text-primary text-text-tertiary/30">-</span>
+                        </div>
+                        <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Kg</span>
+                            <span className="text-xl font-bold text-text-primary text-text-tertiary/30">-</span>
+                        </div>
                     </div>
-                    <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Reps</span>
-                        <span className="text-xl font-bold text-text-primary text-text-tertiary/30">-</span>
-                    </div>
-                    <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Kg</span>
-                        <span className="text-xl font-bold text-text-primary text-text-tertiary/30">-</span>
-                    </div>
-                </div>
 
                     {/* Delete button */}
                     {onDelete && (
                         <button
                             onClick={onDelete}
-                            className="text-text-tertiary hover:text-danger transition-colors p-2 rounded-lg hover:bg-danger/10"
+                            className={`transition-colors p-2 rounded-lg flex items-center gap-1 ${isConfirmingDelete
+                                ? 'bg-danger/20 text-danger font-bold text-xs'
+                                : 'text-text-tertiary hover:text-danger hover:bg-danger/10'
+                                }`}
                             title="Remove exercise"
                         >
                             <Trash2 size={20} />
+                            {isConfirmingDelete && <span>Sure?</span>}
                         </button>
                     )}
                 </div>
