@@ -960,7 +960,11 @@ export const StatsPage: React.FC = () => {
                 {(['week', 'month', '3months', '6months', 'year', 'all'] as const).map((p) => (
                     <button
                         key={p}
-                        className={`px-3 py-1.5 text-sm rounded-full whitespace-nowrap ${period === p ? 'bg-primary text-white' : 'bg-mid text-text-secondary'}`}
+                        className={`px-3 py-1 text-sm rounded-full whitespace-nowrap transition-colors ${
+                            period === p
+                                ? 'bg-accent text-white'
+                                : 'bg-bg-tertiary text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                        }`}
                         onClick={() => setPeriod(p)}
                     >
                         {p === 'week' && 'Week'}
