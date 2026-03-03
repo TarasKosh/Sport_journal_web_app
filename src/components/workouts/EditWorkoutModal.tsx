@@ -3,7 +3,7 @@ import type { Workout, WorkoutExercise } from '../../types';
 import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Button } from '../common/Button';
-import { X, Plus, Dumbbell, CheckCircle } from 'lucide-react';
+import { X, Plus, Dumbbell, CheckCircle, ChevronDown } from 'lucide-react';
 import { ExercisePickerModal } from './ExercisePickerModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { SetList } from './WorkoutSetList';
@@ -29,11 +29,14 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   const [mood, setMood] = useState(workout.mood || 'neutral');
   const [bodyWeight, setBodyWeight] = useState(workout.bodyWeight?.toString() || '');
   const [workoutDay, setWorkoutDay] = useState(workout.workoutDay || '');
-  
+
   // Exercise picker states
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
-  
+
+  // Header collapsed/expanded state — collapsed by default so exercises are visible
+  const [isHeaderExpanded, setIsHeaderExpanded] = useState(false);
+
   // Save notification state
   const [showSavedNotification, setShowSavedNotification] = useState(false);
 
@@ -67,7 +70,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
         updatedAt: Date.now()
       });
       onSaved && onSaved({ ...workout, title, notes, mood, bodyWeight: parsedWeight, workoutDay });
-      
+
       // Show saved notification
       setShowSavedNotification(true);
       setTimeout(() => {
@@ -102,7 +105,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
       if (!template) return;
 
       const count = await db.workoutExercises.where('workoutId').equals(workout.uuid).count();
-      
+
       // Add all exercises from template
       for (let i = 0; i < template.exercises.length; i++) {
         await db.workoutExercises.add({
@@ -113,7 +116,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
           updatedAt: Date.now()
         });
       }
-      
+
       setIsTemplatePickerOpen(false);
     } catch (e) {
       console.error("Failed to add template", e);
@@ -125,7 +128,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
     if (confirm('Remove this exercise from workout?')) {
       const we = exercises?.find(e => e.id === workoutExerciseId);
       if (!we) return;
-      
+
       // Delete all sets for this exercise
       const sets = await db.sets.where('workoutExerciseId').equals(we.uuid).toArray();
       await db.sets.bulkDelete(sets.map(s => s.id!));
@@ -144,7 +147,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   // Move exercise up/down
   const moveExercise = async (index: number, direction: 'up' | 'down') => {
     if (!exercises) return;
-    
+
     const newIndex = direction === 'up' ? index - 1 : index + 1;
     if (newIndex < 0 || newIndex >= exercises.length) return;
 
@@ -161,97 +164,120 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
       <div className="bg-bg-primary w-full h-full sm:w-[95vw] sm:h-[95vh] sm:max-w-6xl sm:max-h-[95vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-in">
-        {/* Header */}
-        <div className="bg-gradient-to-br from-accent to-accent-hover text-white p-6 pb-5 flex-shrink-0 relative">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold">Edit Workout</h2>
-            <button 
-              className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors" 
-              onClick={onClose}
+
+        {/* ── Collapsible Header ── */}
+        <div className="bg-gradient-to-br from-accent to-accent-hover text-white flex-shrink-0 relative">
+
+          {/* Always-visible title row */}
+          <div className="flex items-center justify-between px-4 h-14">
+            {/* Chevron toggle */}
+            <button
+              className="flex items-center gap-2 min-w-0 flex-1 text-left group"
+              onClick={() => setIsHeaderExpanded(prev => !prev)}
+              aria-expanded={isHeaderExpanded}
+              aria-label={isHeaderExpanded ? 'Collapse workout details' : 'Expand workout details'}
             >
-              <X size={24} />
+              <ChevronDown
+                size={20}
+                className="flex-shrink-0 text-white/80 transition-transform duration-300"
+                style={{ transform: isHeaderExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+              />
+              <h2 className="text-lg font-bold truncate">
+                {title.trim() || 'Edit Workout'}
+              </h2>
             </button>
+
+            {/* Saved badge + close */}
+            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+              {showSavedNotification && (
+                <div className="bg-white/95 text-accent px-3 py-1 rounded-lg flex items-center gap-1.5 animate-in fade-in slide-in-from-right-3">
+                  <CheckCircle size={14} className="text-success" />
+                  <span className="font-semibold text-xs">Saved</span>
+                </div>
+              )}
+              <button
+                className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                onClick={onClose}
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
           </div>
 
-          {/* Saved Notification */}
-          {showSavedNotification && (
-            <div className="absolute top-4 right-20 bg-white/95 text-accent px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-right-5 z-10">
-              <CheckCircle size={18} className="text-success" />
-              <span className="font-semibold text-sm">Saved</span>
-            </div>
-          )}
-
-          {/* Metadata Section */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-white/80 mb-1">Title</label>
-              <input 
-                className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm" 
-                type="text" 
-                value={title} 
-                onChange={e => {
-                  setTitle(e.target.value);
-                  // Auto-save on blur or after delay
-                }}
-                onBlur={handleSaveMetadata}
-                placeholder="Workout title"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-white/80 mb-1">Mood</label>
-              <select 
-                className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm" 
-                value={mood} 
-                onChange={e => {
-                  const newMood = e.target.value as Workout['mood'];
-                  if (newMood) {
-                    setMood(newMood);
+          {/* Expandable metadata form */}
+          <div
+            className="overflow-hidden transition-all duration-300 ease-in-out"
+            style={{ maxHeight: isHeaderExpanded ? '420px' : '0px' }}
+          >
+            <div className="px-4 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-white/80 mb-1">Title</label>
+                <input
+                  className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm"
+                  type="text"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  onBlur={handleSaveMetadata}
+                  placeholder="Workout title"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-white/80 mb-1">Mood</label>
+                <select
+                  className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm"
+                  value={mood}
+                  onChange={e => {
+                    const newMood = e.target.value as Workout['mood'];
+                    if (newMood) {
+                      setMood(newMood);
+                      handleSaveMetadata();
+                    }
+                  }}
+                >
+                  <option value="great">Great</option>
+                  <option value="good">Good</option>
+                  <option value="neutral">Neutral</option>
+                  <option value="bad">Bad</option>
+                  <option value="terrible">Terrible</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-white/80 mb-1">Body Weight (kg)</label>
+                <input
+                  className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={bodyWeight}
+                  onChange={e => setBodyWeight(e.target.value)}
+                  onBlur={handleSaveMetadata}
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-white/80 mb-1">Date</label>
+                <input
+                  className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm"
+                  type="date"
+                  value={workoutDay}
+                  onChange={e => {
+                    setWorkoutDay(e.target.value);
                     handleSaveMetadata();
-                  }
-                }}
-              >
-                <option value="great">Great</option>
-                <option value="good">Good</option>
-                <option value="neutral">Neutral</option>
-                <option value="bad">Bad</option>
-                <option value="terrible">Terrible</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-white/80 mb-1">Body Weight (kg)</label>
-              <input 
-                className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm" 
-                type="number" 
-                min="0" 
-                step="0.01" 
-                value={bodyWeight} 
-                onChange={e => setBodyWeight(e.target.value)}
-                onBlur={handleSaveMetadata}
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-white/80 mb-1">Date</label>
-              <input 
-                className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm" 
-                type="date" 
-                value={workoutDay} 
-                onChange={e => {
-                  setWorkoutDay(e.target.value);
-                  handleSaveMetadata();
-                }}
-              />
-            </div>
-            <div className="sm:col-span-2 lg:col-span-1">
-              <label className="block text-xs font-semibold text-white/80 mb-1">Notes</label>
-              <textarea 
-                className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm resize-none" 
-                rows={2} 
-                value={notes} 
-                onChange={e => setNotes(e.target.value)}
-                onBlur={handleSaveMetadata}
-                placeholder="Workout notes..."
-              />
+                  }}
+                />
+              </div>
+              <div className="sm:col-span-2 lg:col-span-1">
+                <label className="block text-xs font-semibold text-white/80 mb-1">Notes</label>
+                <textarea
+                  className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm resize-none"
+                  rows={2}
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  onBlur={handleSaveMetadata}
+                  placeholder="Workout notes..."
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -269,8 +295,8 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
           )}
 
           {exercises?.map((we, index) => (
-            <WorkoutExerciseItem 
-              key={we.uuid} 
+            <WorkoutExerciseItem
+              key={we.uuid}
               workoutExercise={we}
               index={index}
               totalCount={exercises.length}
@@ -293,7 +319,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
                 <span className="text-sm font-bold text-accent">Add Template</span>
               </div>
             </button>
-            
+
             <button
               onClick={() => setIsPickerOpen(true)}
               className="py-5 px-4 rounded-2xl border-2 border-dashed border-accent/30 bg-accent/5 hover:bg-accent/10 hover:border-accent/50 transition-all active:scale-[0.98]"
@@ -333,7 +359,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
 };
 
 // Sub-component wrapper to fetch exercise name cleanly
-const WorkoutExerciseItem: React.FC<{ 
+const WorkoutExerciseItem: React.FC<{
   workoutExercise: WorkoutExercise;
   index: number;
   totalCount: number;
@@ -346,9 +372,9 @@ const WorkoutExerciseItem: React.FC<{
   if (!exercise) return <div className="animate-pulse bg-bg-tertiary h-20 rounded-lg"></div>;
 
   return (
-    <SetList 
-      workoutExercise={workoutExercise} 
-      exerciseName={exercise.name} 
+    <SetList
+      workoutExercise={workoutExercise}
+      exerciseName={exercise.name}
       isUnilateral={exercise.isUnilateral}
       index={index}
       totalCount={totalCount}
