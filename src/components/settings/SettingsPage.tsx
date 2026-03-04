@@ -4,10 +4,13 @@ import { db } from '../../db/db';
 import { Card } from '../common/Card';
 import { MassUnit } from '../../types';
 import { SyncPage } from '../sync/SyncPage';
+import { usePWA } from '../../hooks/usePWA';
+import { Download, CheckCircle2 } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
     // We assume ID 1 for settings. Or first record.
     const settings = useLiveQuery(() => db.settings.toCollection().first());
+    const { isInstallable, isInstalled, installApp } = usePWA();
 
     const updateSetting = async (key: string, value: any) => {
         if (settings) {
@@ -64,7 +67,7 @@ export const SettingsPage: React.FC = () => {
                             window.location.reload();
                         }
                     }}
-                    className="w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 active:bg-red-800 transition-colors shadow-md"
+                    className="w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 active:bg-red-800 transition-colors shadow-md flex items-center justify-center gap-2"
                 >
                     🗑️ Reset Database
                 </button>
@@ -72,6 +75,31 @@ export const SettingsPage: React.FC = () => {
                     This will delete all workouts, exercises, and settings. The database will be recreated with default exercises.
                 </p>
             </Card>
+
+            {isInstallable && (
+                <Card className="bg-accent/10 border-2 border-accent/30">
+                    <h3 className="text-sm font-bold text-accent mb-2">Desktop & App Shortcut</h3>
+                    <p className="text-sm text-text-secondary mb-3">
+                        Install this application to your device to use it offline and have a shortcut on your home screen or desktop.
+                    </p>
+                    <button
+                        onClick={installApp}
+                        className="w-full bg-accent text-white font-bold py-3 px-4 rounded-lg hover:bg-accent-hover active:bg-accent-hover transition-all shadow-md flex items-center justify-center gap-2"
+                    >
+                        <Download size={20} />
+                        Install Application
+                    </button>
+                </Card>
+            )}
+
+            {isInstalled && (
+                <Card className="bg-success/10 border border-success/30">
+                    <div className="flex items-center gap-2 text-success">
+                        <CheckCircle2 size={18} />
+                        <span className="text-sm font-bold">App Installed</span>
+                    </div>
+                </Card>
+            )}
 
             <Card className="bg-bg-tertiary/50">
                 <h3 className="text-sm font-bold opacity-50 mb-2">About</h3>

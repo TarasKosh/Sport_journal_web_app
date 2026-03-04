@@ -621,11 +621,11 @@ button {
 }
 
 /* Additional utility classes */
-.space-y-4 > * + * {
+.space-y-4>*+* {
   margin-top: 1rem;
 }
 
-.space-y-3 > * + * {
+.space-y-3>*+* {
   margin-top: 0.75rem;
 }
 
@@ -740,6 +740,14 @@ button {
   background-color: rgba(239, 68, 68, 0.05);
 }
 
+.bg-accent\/10 {
+  background-color: rgba(74, 222, 128, 0.1);
+}
+
+.bg-success\/10 {
+  background-color: rgba(74, 222, 128, 0.1);
+}
+
 .bg-danger\/40 {
   background-color: rgba(239, 68, 68, 0.4);
 }
@@ -750,6 +758,14 @@ button {
 
 .border-danger\/30 {
   border-color: rgba(239, 68, 68, 0.3);
+}
+
+.border-accent\/30 {
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.border-success\/30 {
+  border-color: rgba(74, 222, 128, 0.3);
 }
 
 .border-danger\/40 {
