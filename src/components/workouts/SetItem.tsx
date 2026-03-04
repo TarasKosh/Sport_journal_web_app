@@ -10,6 +10,7 @@ interface SetItemProps {
     index: number;
     isUnilateral?: boolean;
     variations?: string[];
+    onAddVariation?: () => void;
 }
 
 // Defined outside SetItem so React keeps a stable component identity across re-renders,
@@ -68,7 +69,7 @@ const InputWithButtons = ({
     </div>
 );
 
-export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnilateral, variations }) => {
+export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnilateral, variations, onAddVariation }) => {
     const [weight, setWeight] = useState(set.weight.toString());
     const [reps, setReps] = useState(set.reps.toString());
     const [rpe, setRpe] = useState(set.rpe?.toString() || '');
@@ -142,13 +143,13 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
     return (
         <div className={clsx("py-2 px-2 transition-colors", activeRowClass)}>
             {/* Header: Set Number + Delete Button */}
-            <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                    <div className="text-xl font-bold text-text-tertiary">
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-accent font-black text-sm">
                         {index + 1}
                     </div>
                     {isUnilateral && (
-                        <div className="flex gap-0.5 bg-bg-tertiary rounded-lg p-0.5">
+                        <div className="flex gap-0.5 bg-bg-tertiary rounded-lg p-0.5 border border-border/40">
                             <button
                                 onClick={() => {
                                     if (side !== 'left') {
@@ -157,11 +158,11 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
                                     }
                                 }}
                                 className={clsx(
-                                    "text-sm uppercase font-bold px-2 py-1 rounded cursor-pointer select-none transition-all",
+                                    "text-[10px] uppercase font-bold px-3 py-1 rounded-md cursor-pointer select-none transition-all",
                                     side === 'left' ? "bg-accent text-white shadow-sm" : "text-text-tertiary hover:text-text-secondary"
                                 )}
                             >
-                                L
+                                Left
                             </button>
                             <button
                                 onClick={() => {
@@ -171,43 +172,71 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
                                     }
                                 }}
                                 className={clsx(
-                                    "text-sm uppercase font-bold px-2 py-1 rounded cursor-pointer select-none transition-all",
+                                    "text-[10px] uppercase font-bold px-3 py-1 rounded-md cursor-pointer select-none transition-all",
                                     side === 'right' ? "bg-accent text-white shadow-sm" : "text-text-tertiary hover:text-text-secondary"
                                 )}
                             >
-                                R
+                                Right
                             </button>
                         </div>
                     )}
                 </div>
                 <button
                     onClick={handleDelete}
-                    className="text-text-tertiary hover:text-danger transition-colors opacity-60 hover:opacity-100"
+                    className="p-2 text-text-tertiary hover:text-danger transition-colors opacity-40 hover:opacity-100"
                 >
-                    <Trash2 size={18} />
+                    <Trash2 size={16} />
                 </button>
             </div>
 
-            {/* Variation */}
-            <div className="mb-2">
-                <div className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider mb-1 text-center">VARIATION</div>
-                <select
-                    value={variation}
-                    onChange={(e) => {
-                        const next = e.target.value;
-                        setVariation(next);
-                        db.sets.update(set.id!, {
-                            variation: next ? next : undefined,
-                            updatedAt: Date.now()
-                        }).catch(console.error);
-                    }}
-                    className="w-full h-12 px-4 rounded-xl bg-bg-secondary border-2 border-border focus:border-accent/60 outline-none text-text-primary font-semibold"
-                >
-                    <option value="">Default</option>
+            {/* Variation Picker (Horizontal Scroll) */}
+            <div className="mb-4">
+                <div className="text-[9px] uppercase font-black text-text-tertiary tracking-widest mb-2 px-1">Variation</div>
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 px-1 no-scrollbar">
+                    {/* Always visible Default option */}
+                    <button
+                        onClick={() => {
+                            setVariation('');
+                            db.sets.update(set.id!, { variation: undefined, updatedAt: Date.now() });
+                        }}
+                        className={clsx(
+                            "px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider whitespace-nowrap border-2 transition-all",
+                            variation === ''
+                                ? "bg-accent border-accent text-white shadow-md shadow-accent/20"
+                                : "bg-bg-secondary border-border/60 text-text-tertiary hover:border-accent/40"
+                        )}
+                    >
+                        Default
+                    </button>
+
+                    {/* Custom Variations */}
                     {variationOptions.map(v => (
-                        <option key={v} value={v}>{v}</option>
+                        <button
+                            key={v}
+                            onClick={() => {
+                                setVariation(v);
+                                db.sets.update(set.id!, { variation: v, updatedAt: Date.now() });
+                            }}
+                            className={clsx(
+                                "px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider whitespace-nowrap border-2 transition-all",
+                                variation === v
+                                    ? "bg-accent border-accent text-white shadow-md shadow-accent/20"
+                                    : "bg-bg-secondary border-border/60 text-text-tertiary hover:border-accent/40"
+                            )}
+                        >
+                            {v}
+                        </button>
                     ))}
-                </select>
+
+                    {/* Add New Button */}
+                    <button
+                        onClick={onAddVariation}
+                        className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center bg-bg-tertiary text-text-tertiary border-2 border-dashed border-border/60 hover:border-accent hover:text-accent transition-all active:scale-90"
+                        title="Add new variation"
+                    >
+                        <Plus size={18} strokeWidth={3} />
+                    </button>
+                </div>
             </div>
 
             {/* Input Fields - Responsive Grid */}

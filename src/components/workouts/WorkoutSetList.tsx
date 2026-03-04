@@ -165,13 +165,6 @@ export const SetList: React.FC<SetListProps> = ({
                     <div className="h-4 w-px bg-border/40 mx-1" />
 
                     <button
-                        onClick={handleAddVariation}
-                        className="text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all bg-bg-tertiary text-text-secondary hover:bg-accent hover:text-white border border-border/40"
-                    >
-                        + Variation
-                    </button>
-
-                    <button
                         onClick={() => setTrackSides(!trackSides)}
                         className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all border ${trackSides
                             ? 'bg-accent text-white border-accent shadow-sm shadow-accent/20'
@@ -180,6 +173,7 @@ export const SetList: React.FC<SetListProps> = ({
                     >
                         {trackSides ? 'L/R Active' : 'L/R Off'}
                     </button>
+                    {/* Note: + Variation moved to set items for better UX */}
                 </div>
 
                 {/* Row 3: Move Controls & Stats */}
@@ -226,6 +220,7 @@ export const SetList: React.FC<SetListProps> = ({
                         index={index}
                         isUnilateral={trackSides}
                         variations={exercise?.variations || []}
+                        onAddVariation={handleAddVariation}
                     />
                 ))}
 
