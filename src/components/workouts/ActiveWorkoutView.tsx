@@ -155,8 +155,8 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
                             <button
                                 onClick={cancelWorkout}
                                 className={`h-11 px-3 rounded-xl flex items-center justify-center transition-colors gap-2 font-bold text-sm ${confirmDiscard
-                                        ? 'bg-danger text-white hover:bg-danger/90'
-                                        : 'bg-white/15 text-white hover:bg-white/25 w-11'
+                                    ? 'bg-danger text-white hover:bg-danger/90'
+                                    : 'bg-white/15 text-white hover:bg-white/25 w-11'
                                     }`}
                                 title="Discard Workout"
                             >

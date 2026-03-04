@@ -34,6 +34,9 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
 
+  // Two-tap confirm state for exercise deletion
+  const [confirmDeleteExerciseId, setConfirmDeleteExerciseId] = useState<number | null>(null);
+
   // Header collapsed/expanded state — collapsed by default so exercises are visible
   const [isHeaderExpanded, setIsHeaderExpanded] = useState(false);
 
@@ -123,25 +126,30 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
     }
   };
 
-  // Delete exercise from workout
+  // Delete exercise from workout (two-tap confirmation pattern)
   const deleteExercise = async (workoutExerciseId: number) => {
-    if (confirm('Remove this exercise from workout?')) {
-      const we = exercises?.find(e => e.id === workoutExerciseId);
-      if (!we) return;
+    if (confirmDeleteExerciseId !== workoutExerciseId) {
+      setConfirmDeleteExerciseId(workoutExerciseId);
+      setTimeout(() => setConfirmDeleteExerciseId(null), 3000);
+      return;
+    }
 
-      // Delete all sets for this exercise
-      const sets = await db.sets.where('workoutExerciseId').equals(we.uuid).toArray();
-      await db.sets.bulkDelete(sets.map(s => s.id!));
-      // Delete the workout exercise
-      await db.workoutExercises.delete(workoutExerciseId);
-      // Reorder remaining exercises
-      if (exercises) {
-        const remaining = exercises.filter(e => e.id !== workoutExerciseId);
-        for (let i = 0; i < remaining.length; i++) {
-          await db.workoutExercises.update(remaining[i].id!, { order: i, updatedAt: Date.now() });
-        }
+    const we = exercises?.find(e => e.id === workoutExerciseId);
+    if (!we) return;
+
+    // Delete all sets for this exercise
+    const sets = await db.sets.where('workoutExerciseId').equals(we.uuid).toArray();
+    await db.sets.bulkDelete(sets.map(s => s.id!));
+    // Delete the workout exercise
+    await db.workoutExercises.delete(workoutExerciseId);
+    // Reorder remaining exercises
+    if (exercises) {
+      const remaining = exercises.filter(e => e.id !== workoutExerciseId);
+      for (let i = 0; i < remaining.length; i++) {
+        await db.workoutExercises.update(remaining[i].id!, { order: i, updatedAt: Date.now() });
       }
     }
+    setConfirmDeleteExerciseId(null);
   };
 
   // Move exercise up/down
@@ -301,6 +309,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
               index={index}
               totalCount={exercises.length}
               onDelete={() => deleteExercise(we.id!)}
+              isConfirmingDelete={confirmDeleteExerciseId === we.id}
               onMoveUp={() => moveExercise(index, 'up')}
               onMoveDown={() => moveExercise(index, 'down')}
             />
@@ -364,9 +373,10 @@ const WorkoutExerciseItem: React.FC<{
   index: number;
   totalCount: number;
   onDelete: () => void;
+  isConfirmingDelete: boolean;
   onMoveUp: () => void;
   onMoveDown: () => void;
-}> = ({ workoutExercise, index, totalCount, onDelete, onMoveUp, onMoveDown }) => {
+}> = ({ workoutExercise, index, totalCount, onDelete, isConfirmingDelete, onMoveUp, onMoveDown }) => {
   const exercise = useLiveQuery(() => db.exercises.where('uuid').equals(workoutExercise.exerciseId).first());
 
   if (!exercise) return <div className="animate-pulse bg-bg-tertiary h-20 rounded-lg"></div>;
@@ -379,6 +389,7 @@ const WorkoutExerciseItem: React.FC<{
       index={index}
       totalCount={totalCount}
       onDelete={onDelete}
+      isConfirmingDelete={isConfirmingDelete}  // Pass confirm state so Trash2 button shows "Sure?"
       onMoveUp={onMoveUp}
       onMoveDown={onMoveDown}
     />
