@@ -16,7 +16,7 @@ This file provides context and instructions for AI agents (coding assistants, LL
 |--------------|--------------------------------------------------------|
 | Framework    | Vite 7 + React 19 + TypeScript                         |
 | Database     | Dexie.js 4 (IndexedDB wrapper) + dexie-react-hooks     |
-| Styling      | Vanilla CSS with CSS Variables (Dark Mode)             |
+| Styling      | Tailwind-like Utility CSS (Mini-Framework) + CSS Variables |
 | Icons        | Lucide React                                           |
 | Routing      | React Router DOM v7 (HashRouter)                       |
 | Utilities    | date-fns v4 (date formatting), clsx (class merging), uuid v13 |
@@ -167,8 +167,10 @@ npm run lint
 - Use `uuid` (v4) for all entity IDs — never rely on Dexie auto-increment IDs across devices.
 - Prefer explicit, simple business logic over clever abstractions.
 - Components are split by feature domain — keep them focused and scoped.
-- CSS is written in Vanilla CSS using CSS Custom Properties (variables). No Tailwind.
-- TypeScript strict mode is enabled — avoid `any` except in documented edge cases (e.g., sync snapshots, Dexie upgrade callbacks).
+- Styling uses a custom "Tailwind-like" utility system defined in `src/index.css`. 
+- Avoid writing new raw CSS for layouts; prefer existing utility classes (e.g., `flex`, `p-4`, `gap-2`).
+- Responsive classes (e.g., `sm:flex-row`, `sm:grid-cols-2`) are supported and preferred for mobile-first design.
+- Use CSS Custom Properties (variables) from `variables.css` for colors, spacing, and radii.
 - `useLiveQuery` is the primary pattern for reading reactive data from IndexedDB.
 - All DB relationships use `uuid` as foreign keys (not auto-increment `id`) to ensure sync safety across devices.
 
