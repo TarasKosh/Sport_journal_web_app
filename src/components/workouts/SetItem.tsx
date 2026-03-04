@@ -127,12 +127,12 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
 
     const variationOptions = React.useMemo(() => {
         const base = Array.isArray(variations) ? variations : [];
-        const normalized = base.filter(v => typeof v === 'string' && v.trim().length > 0);
+        const normalized = base.filter(v => typeof v === 'string' && v.trim().length > 0 && v.toLowerCase() !== 'default');
         const unique: string[] = [];
         for (const v of normalized) {
             if (!unique.some(x => x.toLowerCase() === v.toLowerCase())) unique.push(v);
         }
-        if (variation && !unique.some(x => x.toLowerCase() === variation.toLowerCase())) {
+        if (variation && variation.toLowerCase() !== 'default' && !unique.some(x => x.toLowerCase() === variation.toLowerCase())) {
             unique.unshift(variation);
         }
         return unique;
