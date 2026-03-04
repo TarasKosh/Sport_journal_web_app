@@ -126,95 +126,92 @@ export const SetList: React.FC<SetListProps> = ({
 
     return (
         <Card className="flex flex-col bg-bg-secondary p-0 rounded-xl border border-border/60 shadow-md overflow-hidden animate-in fade-in slide-in-from-bottom-10">
-            {/* Header Section matching reference */}
-            <div className="flex flex-row p-4 gap-4 border-b border-border/40 items-center justify-between relative">
+            {/* Redesigned Multi-row Header */}
+            <div className="flex flex-col p-4 gap-3 border-b border-border/40 bg-bg-secondary relative">
 
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                    {/* Image Placeholder - Smaller on mobile */}
-                    <div className="w-12 h-12 sm:w-20 sm:h-20 bg-white border border-border/20 rounded-lg flex items-center justify-center text-text-tertiary flex-shrink-0 p-1.5 shadow-sm">
-                        <Dumbbell size={24} strokeWidth={1} className="text-text-tertiary/50" />
+                {/* Row 1: Title and Delete */}
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-12 h-12 bg-white border border-border/20 rounded-xl flex items-center justify-center text-text-tertiary flex-shrink-0 p-2 shadow-sm">
+                            <Dumbbell size={24} strokeWidth={1.5} className="text-accent/60" />
+                        </div>
+                        <h3 className="font-extrabold text-lg text-text-primary leading-tight truncate">
+                            {exerciseName}
+                        </h3>
                     </div>
 
-                    {/* Info */}
-                    <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                        <h3 className="font-bold text-base sm:text-lg text-text-primary leading-tight truncate">{exerciseName}</h3>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="text-xs text-text-secondary leading-snug capitalize font-medium truncate max-w-[80px]">
-                                {exercise?.muscleGroup?.replace('_', ' ') || 'General'}
-                            </p>
-                            <button
-                                onClick={handleAddVariation}
-                                className="text-[10px] font-bold px-1.5 py-0.5 rounded transition-all bg-bg-tertiary text-text-tertiary hover:bg-bg-tertiary/80"
-                                title="Add variation"
-                            >
-                                Var+
-                            </button>
-                            {/* L/R Toggle */}
-                            <button
-                                onClick={() => setTrackSides(!trackSides)}
-                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-all ${trackSides
-                                    ? 'bg-accent text-white'
-                                    : 'bg-bg-tertiary text-text-tertiary hover:bg-bg-tertiary/80'
-                                    }`}
-                                title="Track left/right sides separately"
-                            >
-                                L/R
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right Side: Controls + Stats */}
-                <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                    {/* Move buttons */}
-                    {onMoveUp && onMoveDown && typeof index === 'number' && typeof totalCount === 'number' && (
-                        <div className="flex flex-col gap-0.5">
-                            <button
-                                onClick={onMoveUp}
-                                disabled={index === 0}
-                                className="text-text-tertiary hover:text-accent disabled:opacity-20 disabled:cursor-not-allowed transition-colors p-0.5"
-                                title="Move up"
-                            >
-                                <ChevronUp size={18} strokeWidth={2.5} />
-                            </button>
-                            <button
-                                onClick={onMoveDown}
-                                disabled={index === totalCount - 1}
-                                className="text-text-tertiary hover:text-accent disabled:opacity-20 disabled:cursor-not-allowed transition-colors p-0.5"
-                                title="Move down"
-                            >
-                                <ChevronDown size={18} strokeWidth={2.5} />
-                            </button>
-                        </div>
-                    )}
-
-                    {/* Stats Summary - Compact on mobile */}
-                    <div className="flex gap-2 sm:gap-4 text-center mr-1 sm:mr-0">
-                        <div className="flex flex-col items-center gap-0">
-                            <span className="text-[8px] sm:text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Sets</span>
-                            <span className="text-base sm:text-xl font-bold text-text-primary">{sets?.length || 0}</span>
-                        </div>
-                        <div className="hidden xs:flex flex-col items-center gap-0">
-                            <span className="text-[8px] sm:text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Reps</span>
-                            <span className="text-base sm:text-xl font-bold text-text-tertiary/30">-</span>
-                        </div>
-                    </div>
-
-                    {/* Delete button */}
+                    {/* Delete button - Always accessible in top right */}
                     {onDelete && (
                         <button
                             onClick={onDelete}
-                            className={`transition-colors p-2 rounded-lg flex items-center gap-1 ${isConfirmingDelete
-                                ? 'bg-danger/20 text-danger font-bold text-xs'
-                                : 'text-text-tertiary hover:text-danger hover:bg-danger/10'
+                            className={`transition-all p-2.5 rounded-xl flex items-center gap-2 ${isConfirmingDelete
+                                ? 'bg-danger text-white font-bold shadow-lg shadow-danger/20'
+                                : 'bg-bg-tertiary text-text-tertiary hover:text-danger hover:bg-danger/10'
                                 }`}
                             title="Remove exercise"
                         >
                             <Trash2 size={18} />
-                            {isConfirmingDelete && <span className="hidden sm:inline text-[10px]">Sure?</span>}
-                            {isConfirmingDelete && <span className="sm:hidden text-[10px]">?</span>}
+                            {isConfirmingDelete && <span className="text-xs">Delete?</span>}
                         </button>
                     )}
+                </div>
+
+                {/* Row 2: Options & Badges */}
+                <div className="flex flex-wrap items-center gap-2 ml-1">
+                    <span className="px-2.5 py-1 rounded-lg bg-accent/10 text-accent text-[10px] font-bold uppercase tracking-wider">
+                        {exercise?.muscleGroup?.replace('_', ' ') || 'General'}
+                    </span>
+
+                    <div className="h-4 w-px bg-border/40 mx-1" />
+
+                    <button
+                        onClick={handleAddVariation}
+                        className="text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all bg-bg-tertiary text-text-secondary hover:bg-accent hover:text-white border border-border/40"
+                    >
+                        + Variation
+                    </button>
+
+                    <button
+                        onClick={() => setTrackSides(!trackSides)}
+                        className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all border ${trackSides
+                            ? 'bg-accent text-white border-accent shadow-sm shadow-accent/20'
+                            : 'bg-bg-tertiary text-text-secondary border-border/40 hover:border-accent/40'
+                            }`}
+                    >
+                        {trackSides ? 'L/R Active' : 'L/R Off'}
+                    </button>
+                </div>
+
+                {/* Row 3: Move Controls & Stats */}
+                <div className="flex items-center justify-between mt-1 pt-3 border-t border-border/20">
+                    <div className="flex items-center gap-1 bg-bg-tertiary/50 p-1 rounded-xl border border-border/40">
+                        {onMoveUp && onMoveDown && typeof index === 'number' && typeof totalCount === 'number' && (
+                            <>
+                                <button
+                                    onClick={onMoveUp}
+                                    disabled={index === 0}
+                                    className="text-text-tertiary hover:text-accent disabled:opacity-20 transition-all p-1.5 hover:bg-white rounded-lg"
+                                >
+                                    <ChevronUp size={20} strokeWidth={2.5} />
+                                </button>
+                                <div className="w-px h-4 bg-border/40" />
+                                <button
+                                    onClick={onMoveDown}
+                                    disabled={index === totalCount - 1}
+                                    className="text-text-tertiary hover:text-accent disabled:opacity-20 transition-all p-1.5 hover:bg-white rounded-lg"
+                                >
+                                    <ChevronDown size={20} strokeWidth={2.5} />
+                                </button>
+                            </>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-4 px-3">
+                        <div className="flex flex-col items-end">
+                            <span className="text-[9px] uppercase font-black text-text-tertiary tracking-widest leading-none mb-1">Total Sets</span>
+                            <span className="text-xl font-black text-accent leading-none">{sets?.length || 0}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
