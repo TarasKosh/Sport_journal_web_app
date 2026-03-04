@@ -129,22 +129,22 @@ export const SetList: React.FC<SetListProps> = ({
             {/* Header Section matching reference */}
             <div className="flex flex-row p-4 gap-4 border-b border-border/40 items-center justify-between relative">
 
-                <div className="flex items-center gap-4 flex-1">
-                    {/* Image Placeholder */}
-                    <div className="w-20 h-20 bg-white border border-border/20 rounded-lg flex items-center justify-center text-text-tertiary flex-shrink-0 p-2 shadow-sm">
-                        <Dumbbell size={32} strokeWidth={1} className="text-text-tertiary/50" />
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {/* Image Placeholder - Smaller on mobile */}
+                    <div className="w-12 h-12 sm:w-20 sm:h-20 bg-white border border-border/20 rounded-lg flex items-center justify-center text-text-tertiary flex-shrink-0 p-1.5 shadow-sm">
+                        <Dumbbell size={24} strokeWidth={1} className="text-text-tertiary/50" />
                     </div>
 
                     {/* Info */}
-                    <div className="flex flex-col gap-1">
-                        <h3 className="font-bold text-lg text-text-primary leading-tight">{exerciseName}</h3>
-                        <div className="flex items-center gap-2">
-                            <p className="text-sm text-text-secondary leading-snug capitalize font-medium">
+                    <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                        <h3 className="font-bold text-base sm:text-lg text-text-primary leading-tight truncate">{exerciseName}</h3>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-xs text-text-secondary leading-snug capitalize font-medium truncate max-w-[80px]">
                                 {exercise?.muscleGroup?.replace('_', ' ') || 'General'}
                             </p>
                             <button
                                 onClick={handleAddVariation}
-                                className="text-xs font-bold px-2 py-0.5 rounded transition-all bg-bg-tertiary text-text-tertiary hover:bg-bg-tertiary/80"
+                                className="text-[10px] font-bold px-1.5 py-0.5 rounded transition-all bg-bg-tertiary text-text-tertiary hover:bg-bg-tertiary/80"
                                 title="Add variation"
                             >
                                 Var+
@@ -152,7 +152,7 @@ export const SetList: React.FC<SetListProps> = ({
                             {/* L/R Toggle */}
                             <button
                                 onClick={() => setTrackSides(!trackSides)}
-                                className={`text-xs font-bold px-2 py-0.5 rounded transition-all ${trackSides
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-all ${trackSides
                                     ? 'bg-accent text-white'
                                     : 'bg-bg-tertiary text-text-tertiary hover:bg-bg-tertiary/80'
                                     }`}
@@ -165,42 +165,38 @@ export const SetList: React.FC<SetListProps> = ({
                 </div>
 
                 {/* Right Side: Controls + Stats */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
                     {/* Move buttons */}
                     {onMoveUp && onMoveDown && typeof index === 'number' && typeof totalCount === 'number' && (
                         <div className="flex flex-col gap-0.5">
                             <button
                                 onClick={onMoveUp}
                                 disabled={index === 0}
-                                className="text-text-tertiary hover:text-accent disabled:opacity-20 disabled:cursor-not-allowed transition-colors p-1"
+                                className="text-text-tertiary hover:text-accent disabled:opacity-20 disabled:cursor-not-allowed transition-colors p-0.5"
                                 title="Move up"
                             >
-                                <ChevronUp size={20} strokeWidth={2.5} />
+                                <ChevronUp size={18} strokeWidth={2.5} />
                             </button>
                             <button
                                 onClick={onMoveDown}
                                 disabled={index === totalCount - 1}
-                                className="text-text-tertiary hover:text-accent disabled:opacity-20 disabled:cursor-not-allowed transition-colors p-1"
+                                className="text-text-tertiary hover:text-accent disabled:opacity-20 disabled:cursor-not-allowed transition-colors p-0.5"
                                 title="Move down"
                             >
-                                <ChevronDown size={20} strokeWidth={2.5} />
+                                <ChevronDown size={18} strokeWidth={2.5} />
                             </button>
                         </div>
                     )}
 
-                    {/* Stats Summary */}
-                    <div className="flex gap-4 text-center">
-                        <div className="flex flex-col items-center gap-0.5">
-                            <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Sets</span>
-                            <span className="text-xl font-bold text-text-primary">{sets?.length || 0}</span>
+                    {/* Stats Summary - Compact on mobile */}
+                    <div className="flex gap-2 sm:gap-4 text-center mr-1 sm:mr-0">
+                        <div className="flex flex-col items-center gap-0">
+                            <span className="text-[8px] sm:text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Sets</span>
+                            <span className="text-base sm:text-xl font-bold text-text-primary">{sets?.length || 0}</span>
                         </div>
-                        <div className="flex flex-col items-center gap-0.5">
-                            <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Reps</span>
-                            <span className="text-xl font-bold text-text-primary text-text-tertiary/30">-</span>
-                        </div>
-                        <div className="flex flex-col items-center gap-0.5">
-                            <span className="text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Kg</span>
-                            <span className="text-xl font-bold text-text-primary text-text-tertiary/30">-</span>
+                        <div className="hidden xs:flex flex-col items-center gap-0">
+                            <span className="text-[8px] sm:text-[10px] uppercase font-bold text-text-tertiary/70 tracking-wider">Reps</span>
+                            <span className="text-base sm:text-xl font-bold text-text-tertiary/30">-</span>
                         </div>
                     </div>
 
@@ -214,8 +210,9 @@ export const SetList: React.FC<SetListProps> = ({
                                 }`}
                             title="Remove exercise"
                         >
-                            <Trash2 size={20} />
-                            {isConfirmingDelete && <span>Sure?</span>}
+                            <Trash2 size={18} />
+                            {isConfirmingDelete && <span className="hidden sm:inline text-[10px]">Sure?</span>}
+                            {isConfirmingDelete && <span className="sm:hidden text-[10px]">?</span>}
                         </button>
                     )}
                 </div>
