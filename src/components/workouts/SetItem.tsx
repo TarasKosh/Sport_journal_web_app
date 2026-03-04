@@ -260,7 +260,7 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
                     )}
                 >
                     <span className="text-sm">{isFailure ? '✕' : '✓'}</span>
-                    <span>{isFailure ? 'Muscle Failure' : 'Muscle Failure'}</span>
+                    <span>{isFailure ? 'Failed' : 'Success (No Failure)'}</span>
                 </button>
             </div>
 
@@ -284,12 +284,5 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
             )}
         </div>
     );
-}, (prevProps, nextProps) => {
-    // Only re-render if set.id or isUnilateral changed
-    return prevProps.set.id === nextProps.set.id &&
-        prevProps.isUnilateral === nextProps.isUnilateral &&
-        prevProps.index === nextProps.index &&
-        prevProps.set.updatedAt === nextProps.set.updatedAt &&
-        prevProps.set.variation === nextProps.set.variation &&
-        (prevProps.variations?.length || 0) === (nextProps.variations?.length || 0);
 });
+
