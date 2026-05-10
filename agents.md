@@ -182,7 +182,6 @@ Create a `.env` file at the project root for Google Drive integration:
 
 ```env
 VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id
-VITE_GOOGLE_API_KEY=your_google_api_key
 ```
 
 ---

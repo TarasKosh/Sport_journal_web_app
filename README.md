@@ -94,10 +94,9 @@ Create a `.env` file at the project root to enable Google Drive Sync (optional):
 
 ```env
 VITE_GOOGLE_CLIENT_ID=your_client_id
-VITE_GOOGLE_API_KEY=your_api_key
 ```
 
-Without these variables, only the local JSON Export/Import sync is available.
+Without this variable, only the local JSON Export/Import sync is available.
 
 ## Future Improvements (v1.1+)
 

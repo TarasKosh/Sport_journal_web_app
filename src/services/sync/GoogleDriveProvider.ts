@@ -1,139 +1,220 @@
 import type { SyncProvider, SyncSnapshot } from './types';
 
-// Placeholder for Google Identity Services types
-declare const google: any;
-declare const gapi: any;
+const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+const GOOGLE_GIS_SCRIPT_SRC = 'https://accounts.google.com/gsi/client';
+const SNAPSHOT_FILE_NAME = 'strength-journal-snapshot.json';
+
+interface GoogleTokenResponse {
+    access_token?: string;
+    error?: string;
+    error_description?: string;
+}
+
+interface GoogleTokenClient {
+    requestAccessToken(options?: { prompt?: string }): void;
+}
+
+interface GoogleOauth2 {
+    initTokenClient(config: {
+        client_id: string;
+        scope: string;
+        callback: (response: GoogleTokenResponse) => void;
+    }): GoogleTokenClient;
+    revoke(token: string, callback: () => void): void;
+}
+
+interface GoogleGlobal {
+    accounts: {
+        oauth2: GoogleOauth2;
+    };
+}
+
+declare global {
+    interface Window {
+        google?: GoogleGlobal;
+        __googleDriveGisLoader__?: Promise<void>;
+    }
+}
+
+interface DriveFileListResponse {
+    files?: Array<{
+        id: string;
+        name: string;
+    }>;
+}
+
+interface DriveFileMetadata {
+    id: string;
+}
+
+async function loadScript(src: string, id: string): Promise<void> {
+    if (document.getElementById(id)) {
+        return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script');
+        script.id = id;
+        script.src = src;
+        script.async = true;
+        script.defer = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+        document.head.appendChild(script);
+    });
+}
 
 export class GoogleDriveSyncProvider implements SyncProvider {
-    name = "Google Drive";
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private tokenClient: any;
+    name = 'Google Drive';
 
     private accessToken: string | null = null;
-    private SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
-    private DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+    private readonly CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-    // Prompt says: "Все секреты только в переменных окружения Vite"
-    private CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    private API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
+    private ensureConfigured(): void {
+        if (!this.CLIENT_ID) {
+            throw new Error('Google Drive sync is not configured. Set VITE_GOOGLE_CLIENT_ID in a local .env file and restart the app.');
+        }
+    }
 
-    constructor() {
-        if (!this.CLIENT_ID) console.warn("Google Client ID not set in VITE_GOOGLE_CLIENT_ID");
+    private async ensureGoogleIdentity(): Promise<GoogleGlobal> {
+        if (!window.__googleDriveGisLoader__) {
+            window.__googleDriveGisLoader__ = loadScript(GOOGLE_GIS_SCRIPT_SRC, 'google-drive-gis-client');
+        }
+
+        await window.__googleDriveGisLoader__;
+
+        const google = window.google;
+        if (!google?.accounts?.oauth2) {
+            throw new Error('Google Identity Services failed to initialize.');
+        }
+
+        return google;
     }
 
     async connect(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            if (typeof google === 'undefined') {
-                reject("Google Scripts not loaded");
-                return;
-            }
+        this.ensureConfigured();
 
-            this.tokenClient = google.accounts.oauth2.initTokenClient({
+        if (this.accessToken) {
+            return;
+        }
+
+        const google = await this.ensureGoogleIdentity();
+
+        await new Promise<void>((resolve, reject) => {
+            const tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: this.CLIENT_ID,
-                scope: this.SCOPES,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                callback: (resp: any) => {
-                    if (resp.error) {
-                        reject(resp);
+                scope: GOOGLE_DRIVE_SCOPE,
+                callback: (response: GoogleTokenResponse) => {
+                    if (response.error || !response.access_token) {
+                        reject(new Error(response.error_description || response.error || 'Google authentication failed.'));
+                        return;
                     }
-                    this.accessToken = resp.access_token;
+
+                    this.accessToken = response.access_token;
                     resolve();
                 },
             });
 
-            // Request token
-            this.tokenClient.requestAccessToken();
+            tokenClient.requestAccessToken({ prompt: 'consent' });
         });
     }
 
-    async disconnect() {
-        if (this.accessToken && typeof google !== 'undefined') {
-            google.accounts.oauth2.revoke(this.accessToken, () => {
-                this.accessToken = null;
-            });
+    async disconnect(): Promise<void> {
+        if (!this.accessToken) {
+            return;
         }
+
+        const google = await this.ensureGoogleIdentity();
+        const token = this.accessToken;
+
+        await new Promise<void>((resolve) => {
+            google.accounts.oauth2.revoke(token, () => resolve());
+        });
+
+        this.accessToken = null;
     }
 
-    async isAuthenticated() {
+    async isAuthenticated(): Promise<boolean> {
         return !!this.accessToken;
     }
 
-    private async loadGapi() {
-        // Ensure gapi client is loaded and init
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (typeof (window as any).gapi === 'undefined') throw new Error("GAPI not loaded");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await new Promise<void>((resolve) => (window as any).gapi.load('client', resolve));
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (window as any).gapi.client.init({
-            apiKey: this.API_KEY,
-            discoveryDocs: [this.DISCOVERY_DOC],
+    private async driveRequest(
+        input: string,
+        init: RequestInit = {},
+        allowReconnect = true,
+    ): Promise<Response> {
+        if (!this.accessToken) {
+            await this.connect();
+        }
+
+        const headers = new Headers(init.headers);
+        headers.set('Authorization', `Bearer ${this.accessToken}`);
+
+        const response = await fetch(input, {
+            ...init,
+            headers,
         });
+
+        if (response.status === 401 && allowReconnect) {
+            this.accessToken = null;
+            await this.connect();
+            return this.driveRequest(input, init, false);
+        }
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Google Drive request failed (${response.status}): ${errorText || response.statusText}`);
+        }
+
+        return response;
+    }
+
+    private async findSnapshotFileId(): Promise<string | null> {
+        const query = encodeURIComponent(`name = '${SNAPSHOT_FILE_NAME}' and 'appDataFolder' in parents and trashed = false`);
+        const response = await this.driveRequest(
+            `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name)&pageSize=1&q=${query}`,
+        );
+        const payload = await response.json() as DriveFileListResponse;
+
+        return payload.files?.[0]?.id ?? null;
     }
 
     async pull(): Promise<SyncSnapshot | null> {
-        await this.loadGapi();
-        // 1. Find file in appDataFolder
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const response = await (window as any).gapi.client.drive.files.list({
-            fields: 'files(id, name)',
-            spaces: 'appDataFolder',
-            q: "name = 'strength-journal-snapshot.json' and trashed = false"
-        });
-
-        const files = response.result.files;
-        if (files && files.length > 0) {
-            const fileId = files[0].id;
-            // 2. Download content
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const fileContent = await (window as any).gapi.client.drive.files.get({
-                fileId: fileId,
-                alt: 'media'
-            });
-            return fileContent.result as SyncSnapshot;
+        const fileId = await this.findSnapshotFileId();
+        if (!fileId) {
+            return null;
         }
-        return null; // No file found
+
+        const response = await this.driveRequest(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+        return await response.json() as SyncSnapshot;
     }
 
     async push(snapshot: SyncSnapshot): Promise<void> {
-        await this.loadGapi();
-        const fileContent = JSON.stringify(snapshot);
-        const blob = new Blob([fileContent], { type: 'application/json' });
+        const body = JSON.stringify(snapshot, null, 2);
+        let fileId = await this.findSnapshotFileId();
 
-        // Check if exists
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const listResp = await (window as any).gapi.client.drive.files.list({
-            fields: 'files(id, name)',
-            spaces: 'appDataFolder',
-            q: "name = 'strength-journal-snapshot.json' and trashed = false"
-        });
-
-        const files = listResp.result.files;
-
-        if (files && files.length > 0) {
-            // Update
-            const fileId = files[0].id;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (window as any).gapi.client.request({
-                path: `/upload/drive/v3/files/${fileId}`,
-                method: 'PATCH',
-                params: { uploadType: 'media' },
-                body: fileContent
+        if (!fileId) {
+            const createResponse = await this.driveRequest('https://www.googleapis.com/drive/v3/files', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    name: SNAPSHOT_FILE_NAME,
+                    parents: ['appDataFolder'],
+                }),
             });
-        } else {
-            // Create
-            const metadata = {
-                name: 'strength-journal-snapshot.json',
-                parents: ['appDataFolder']
-            };
-            const form = new FormData();
-            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-            form.append('file', blob);
 
-            // Standard gapi client doesn't support multipart easily, using raw fetch logic or gapi helper
-            // Simplified: use gapi with multipart
-            // ... (This involves constructing multipart body manually) ...
-            // For brevity in this agent turn, I'll assume we creating simplified file or just alerting sync.
+            const metadata = await createResponse.json() as DriveFileMetadata;
+            fileId = metadata.id;
         }
+
+        await this.driveRequest(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body,
+        });
     }
 }
