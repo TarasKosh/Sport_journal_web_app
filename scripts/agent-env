@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+output="${ENV_OUTPUT:-.env}"
+secret_path="${AGENT_SECRETS_PROJECT_ENV:-.config/agent-secrets/projects/sport-journal-web-app.env}"
+
+if ! command -v agent-secrets >/dev/null 2>&1; then
+  echo "agent-secrets is not on PATH; rebuild/switch dotfiles Home Manager profile first" >&2
+  exit 127
+fi
+
+agent-secrets materialize "$secret_path" "$output" \
+  --required-env VITE_GOOGLE_CLIENT_ID
+
+echo "generated $output from encrypted agent secret path $secret_path (values redacted)"

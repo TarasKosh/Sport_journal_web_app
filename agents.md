@@ -191,3 +191,30 @@ VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id
 - [ ] Dropbox / OneDrive sync adapters
 - [ ] Server-based sync for real-time multi-device collaboration
 - [ ] Social sharing features
+
+---
+
+## Local Agent Secrets and Google Browser Runtime
+
+Agents must not ask for or print API keys, OAuth codes, cookies, passwords, or MFA values.
+
+Use the machine-level helpers instead:
+
+```bash
+# Check whether secrets are unlocked and which redacted env files exist
+agent-secrets status
+
+# Generate this project's local .env from encrypted runtime secrets
+ENV_OUTPUT=.env scripts/agent-env
+
+# Prepare the technical Google account in FedotFox before live Drive/OAuth checks
+agent-google-browser ensure --profile gmail-login
+```
+
+The expected encrypted env file path is:
+
+```text
+.config/agent-secrets/projects/sport-journal-web-app.env
+```
+
+For Google Drive sync verification, if `agent-google-browser ensure` reports missing/expired cookies or locked secrets, block the Kanban task and ask the human to run the refresh flow; do not retry headless OAuth indefinitely.
