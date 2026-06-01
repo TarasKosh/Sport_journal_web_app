@@ -90,7 +90,22 @@ Sync is **manual** (user-triggered). A unique `deviceId` is stored in `localStor
 
 ## Configuration
 
-Create a `.env` file at the project root to enable Google Drive Sync (optional):
+Create a local `.env` file at the project root to enable Google Drive Sync (optional).
+On this machine, agents should prefer generating it from encrypted runtime secrets:
+
+```bash
+ENV_OUTPUT=.env scripts/agent-env
+```
+
+That script materializes the expected secret path:
+
+```text
+.config/agent-secrets/projects/sport-journal-web-app.env
+```
+
+Do not commit `.env`, OAuth tokens, or browser/session state.
+
+Manual fallback:
 
 ```env
 VITE_GOOGLE_CLIENT_ID=your_client_id
