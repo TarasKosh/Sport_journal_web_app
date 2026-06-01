@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { Button } from '../common/Button';
-import { Calendar, CheckCircle, Play, Trash2 } from 'lucide-react';
+import { Calendar, CheckCircle, Minus, Play, Plus, Trash2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { ActiveWorkoutView } from './ActiveWorkoutView';
 import { WorkoutDayPickerModal } from './WorkoutDayPickerModal';
@@ -15,6 +15,21 @@ export const WorkoutPage: React.FC = () => {
 
     // Pre-workout inputs (on start screen)
     const [startBodyWeight, setStartBodyWeight] = useState<string>('');
+
+    // Fetch the most recent finished workout to prefill body weight
+    const lastBodyWeight = useLiveQuery(async () => {
+        const workouts = await db.workouts
+            .filter(w => !!w.endedAt && w.bodyWeight != null)
+            .sortBy('startedAt');
+        return workouts.length > 0 ? workouts[workouts.length - 1].bodyWeight ?? null : null;
+    });
+
+    // Prefill body weight once when the value is available and field is empty
+    useEffect(() => {
+        if (lastBodyWeight != null && startBodyWeight === '') {
+            setStartBodyWeight(String(lastBodyWeight));
+        }
+    }, [lastBodyWeight]);
 
     // Post-workout notes (on finish screen)
     const [notesInput, setNotesInput] = useState<string>('');
@@ -173,15 +188,41 @@ export const WorkoutPage: React.FC = () => {
             {/* Body weight input before starting */}
             <div className="w-full max-w-xs">
                 <label className="block text-xs font-bold text-text-tertiary mb-1.5 uppercase tracking-wide text-left">Body Weight (kg)</label>
-                <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    className="w-full px-4 py-3 rounded-xl bg-bg-secondary border border-border/60 focus:border-accent outline-none text-text-primary font-medium text-center text-lg"
-                    placeholder="e.g. 75.5"
-                    value={startBodyWeight}
-                    onChange={e => setStartBodyWeight(e.target.value)}
-                />
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setStartBodyWeight(prev => {
+                            const val = parseFloat(prev);
+                            if (isNaN(val)) return prev;
+                            return String(Math.max(0, +(val - 0.5).toFixed(1)));
+                        })}
+                        disabled={!startBodyWeight}
+                        className="h-12 w-12 shrink-0 rounded-xl bg-bg-secondary border border-border/60 flex items-center justify-center text-text-primary hover:bg-bg-tertiary active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                        <Minus size={20} />
+                    </button>
+                    <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        className="flex-1 px-4 py-3 rounded-xl bg-bg-secondary border border-border/60 focus:border-accent outline-none text-text-primary font-medium text-center text-lg"
+                        placeholder="e.g. 75.5"
+                        value={startBodyWeight}
+                        onChange={e => setStartBodyWeight(e.target.value)}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setStartBodyWeight(prev => {
+                            const val = parseFloat(prev);
+                            if (isNaN(val)) return prev;
+                            return String(+(val + 0.5).toFixed(1));
+                        })}
+                        disabled={!startBodyWeight}
+                        className="h-12 w-12 shrink-0 rounded-xl bg-bg-secondary border border-border/60 flex items-center justify-center text-text-primary hover:bg-bg-tertiary active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                        <Plus size={20} />
+                    </button>
+                </div>
             </div>
 
             <Button size="lg" onClick={handleStartWorkout} fullWidth className="max-w-xs shadow-lg shadow-accent/20">
