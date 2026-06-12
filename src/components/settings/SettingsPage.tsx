@@ -12,12 +12,12 @@ export const SettingsPage: React.FC = () => {
     const settings = useLiveQuery(() => db.settings.toCollection().first());
     const { isInstallable, isInstalled, installApp } = usePWA();
 
-    const updateSetting = async (key: string, value: any) => {
+    const updateSetting = async (key: string, value: string | number | boolean) => {
         if (settings) {
             await db.settings.update(settings.id!, { [key]: value });
         } else {
             // Should be seeded, but fallback
-            await db.settings.add({ [key]: value } as any);
+            await db.settings.add({ [key]: value } as Record<string, string | number | boolean>);
         }
     };
 

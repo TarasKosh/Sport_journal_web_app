@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import type { Exercise, MuscleGroup } from '../../types';
 import { db } from '../../db/db';
 import { Button } from '../common/Button';
@@ -13,20 +13,17 @@ interface EditExerciseModalProps {
 }
 
 export const EditExerciseModal: React.FC<EditExerciseModalProps> = ({ isOpen, onClose, exercise }) => {
-    const [name, setName] = useState('');
-    const [muscle, setMuscle] = useState<MuscleGroup>('other');
+    const [name, setName] = useState(exercise?.name || '');
+    const [muscle, setMuscle] = useState<MuscleGroup>(exercise?.muscleGroup || 'other');
     // const [movement, setMovement] = useState<MovementType>('compound'); // Simplified for MVP
 
-    useEffect(() => {
-        if (exercise) {
-            // Only update if changed to avoid strict mode double-invocations or redundant updates
-            setName(prev => prev !== exercise.name ? exercise.name : prev);
-            setMuscle(prev => prev !== exercise.muscleGroup ? exercise.muscleGroup : prev);
-        } else {
-            setName('');
-            setMuscle('other');
-        }
-    }, [exercise]);
+    // Reset state when exercise prop changes (state-during-render pattern)
+    const [prevExercise, setPrevExercise] = useState(exercise);
+    if (exercise !== prevExercise) {
+        setPrevExercise(exercise);
+        setName(exercise?.name || '');
+        setMuscle(exercise?.muscleGroup || 'other');
+    }
 
 
     const handleSave = async () => {

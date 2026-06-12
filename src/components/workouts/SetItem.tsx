@@ -78,14 +78,17 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
     const [isFailure, setIsFailure] = useState(set.isFailure);
     const [failureRep, setFailureRep] = useState(set.failureRep?.toString() || set.reps.toString());
 
+    // Reset variation when set.variation prop changes (state-during-render pattern)
+    const [prevVariation, setPrevVariation] = useState(set.variation);
+    if (set.variation !== prevVariation) {
+        setPrevVariation(set.variation);
+        setVariation(set.variation || '');
+    }
+
     const debouncedWeight = useDebounce(weight, 500);
     const debouncedReps = useDebounce(reps, 500);
     const debouncedRpe = useDebounce(rpe, 500);
     const debouncedFailureRep = useDebounce(failureRep, 500);
-
-    useEffect(() => {
-        setVariation(set.variation || '');
-    }, [set.variation]);
 
     useEffect(() => {
         if (Number(debouncedWeight) === set.weight &&

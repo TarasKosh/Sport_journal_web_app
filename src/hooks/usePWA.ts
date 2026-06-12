@@ -1,24 +1,29 @@
 import { useState, useEffect } from 'react';
 
+interface BeforeInstallPromptEvent extends Event {
+    prompt(): Promise<void>;
+    userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 /**
  * Hook to handle PWA installation prompt
  */
 export function usePWA() {
-    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+    const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
     const [isInstallable, setIsInstallable] = useState(false);
     const [isInstalled, setIsInstalled] = useState(false);
 
     useEffect(() => {
         // Check if app is already installed (standalone mode)
-        if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true) {
-            setIsInstalled(true);
+        if (window.matchMedia('(display-mode: standalone)').matches || 'standalone' in window.navigator) {
+            setIsInstalled(true); // eslint-disable-line react-hooks/set-state-in-effect
         }
 
         const handleBeforeInstallPrompt = (e: Event) => {
             // Prevent the mini-infobar from appearing on mobile
             e.preventDefault();
             // Stash the event so it can be triggered later.
-            setDeferredPrompt(e);
+            setDeferredPrompt(e as BeforeInstallPromptEvent);
             // Update UI to show "Install" button
             setIsInstallable(true);
         };
@@ -31,11 +36,11 @@ export function usePWA() {
             console.log('PWA was installed');
         };
 
-        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
         window.addEventListener('appinstalled', handleAppInstalled);
 
         return () => {
-            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
             window.removeEventListener('appinstalled', handleAppInstalled);
         };
     }, []);

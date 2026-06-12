@@ -107,7 +107,7 @@ export interface ConflictLog {
     remoteUpdatedAt: number;
     resolvedAt?: number;
     resolution?: 'local' | 'remote' | 'manual';
-    snapshot?: any; // JSON snapshot of the conflict
+    snapshot?: Record<string, unknown>; // JSON snapshot of the conflict
 }
 
 export interface WorkoutTemplate {

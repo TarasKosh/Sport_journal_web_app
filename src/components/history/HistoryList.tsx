@@ -62,7 +62,7 @@ export const HistoryList: React.FC = () => {
     }
 
     // Delete workout and all related data (exercises, sets)
-    const handleDeleteWorkout = async (workout: any) => {
+    const handleDeleteWorkout = async (workout: Workout) => {
         if (!workout.id) return;
         
         if (confirm('Delete this workout? This cannot be undone.')) {

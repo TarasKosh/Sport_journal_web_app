@@ -51,7 +51,7 @@ export class AppDatabase extends Dexie {
             conflictLog: '++id, &uuid, entityType, entityId',
             workoutTemplates: '++id, &uuid, name, isCustom, updatedAt, deletedAt'
         }).upgrade(async (tx) => {
-            await tx.table('workoutTemplates').toCollection().modify((t: any) => {
+            await tx.table('workoutTemplates').toCollection().modify((t: WorkoutTemplate) => {
                 if (typeof t.isCustom !== 'boolean') {
                     t.isCustom = false;
                 }
@@ -75,7 +75,7 @@ export class AppDatabase extends Dexie {
                 return `${y}-${m}-${day}`;
             };
 
-            await tx.table('workouts').toCollection().modify((w: any) => {
+            await tx.table('workouts').toCollection().modify((w: Workout) => {
                 if (!w.workoutDay) {
                     const ts = typeof w.startedAt === 'number' ? w.startedAt : Date.now();
                     w.workoutDay = toDayString(ts);
@@ -92,13 +92,13 @@ export class AppDatabase extends Dexie {
             conflictLog: '++id, &uuid, entityType, entityId',
             workoutTemplates: '++id, &uuid, name, isCustom, updatedAt, deletedAt'
         }).upgrade(async (tx) => {
-            await tx.table('exercises').toCollection().modify((e: any) => {
+            await tx.table('exercises').toCollection().modify((e: Exercise) => {
                 if (!Array.isArray(e.variations)) {
                     e.variations = [];
                 }
             });
 
-            await tx.table('sets').toCollection().modify((s: any) => {
+            await tx.table('sets').toCollection().modify((s: SetEntry) => {
                 if (typeof s.variation === 'undefined') {
                     s.variation = undefined;
                 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { Button } from '../common/Button';
@@ -13,9 +13,6 @@ export const WorkoutPage: React.FC = () => {
     const [isDayPickerOpen, setIsDayPickerOpen] = useState(false);
     const [draftWorkoutDay, setDraftWorkoutDay] = useState<string>(selectedWorkoutDay);
 
-    // Pre-workout inputs (on start screen)
-    const [startBodyWeight, setStartBodyWeight] = useState<string>('');
-
     // Fetch the most recent finished workout to prefill body weight
     const lastBodyWeight = useLiveQuery(async () => {
         const workouts = await db.workouts
@@ -24,15 +21,13 @@ export const WorkoutPage: React.FC = () => {
         return workouts.length > 0 ? workouts[workouts.length - 1].bodyWeight ?? null : null;
     });
 
+    // Pre-workout inputs (on start screen)
     // Prefill body weight once when the value is available and field is empty
-    useEffect(() => {
-        if (lastBodyWeight != null && startBodyWeight === '') {
-            setStartBodyWeight(String(lastBodyWeight));
-        }
-    }, [lastBodyWeight]);
-
-    // Post-workout notes (on finish screen)
-    const [notesInput, setNotesInput] = useState<string>('');
+    // (state-during-render pattern)
+    const [startBodyWeight, setStartBodyWeight] = useState<string>('');
+    if (lastBodyWeight != null && startBodyWeight === '') {
+        setStartBodyWeight(String(lastBodyWeight));
+    }
 
     // Query for an active workout (endedAt is undefined or null)
     // Query for active workouts (should be 0 or 1)
@@ -47,12 +42,16 @@ export const WorkoutPage: React.FC = () => {
         return await db.workouts.where('uuid').equals(finishedWorkoutUuid).first();
     }, [finishedWorkoutUuid]);
 
-    // Update local state when finishedWorkout loads (notes only)
-    useEffect(() => {
+    // Post-workout notes (on finish screen)
+    // Sync notes from finished workout when it loads (state-during-render pattern)
+    const [notesInput, setNotesInput] = useState<string>('');
+    const [prevFinishedWorkout, setPrevFinishedWorkout] = useState(finishedWorkout);
+    if (finishedWorkout !== prevFinishedWorkout) {
+        setPrevFinishedWorkout(finishedWorkout);
         if (finishedWorkout) {
             setNotesInput(finishedWorkout.notes || '');
         }
-    }, [finishedWorkout]);
+    }
 
     const workoutsForSelectedDay = useLiveQuery(async () => {
         return await db.workouts

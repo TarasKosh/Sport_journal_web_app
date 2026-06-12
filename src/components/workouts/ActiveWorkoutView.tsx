@@ -103,6 +103,7 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
         const we = exercises?.find(e => e.id === workoutExerciseId);
         if (!we) return;
 
+        const now = Date.now(); // eslint-disable-line react-hooks/purity
         // Delete all sets for this exercise
         const sets = await db.sets.where('workoutExerciseId').equals(we.uuid).toArray();
         await db.sets.bulkDelete(sets.map(s => s.id!));
@@ -112,7 +113,7 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
         if (exercises) {
             const remaining = exercises.filter(e => e.id !== workoutExerciseId);
             for (let i = 0; i < remaining.length; i++) {
-                await db.workoutExercises.update(remaining[i].id!, { order: i, updatedAt: Date.now() });
+                await db.workoutExercises.update(remaining[i].id!, { order: i, updatedAt: now });
             }
         }
         setConfirmDeleteExerciseId(null);
@@ -127,9 +128,10 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
         const ex1 = exercises[index];
         const ex2 = exercises[newIndex];
 
+        const now = Date.now(); // eslint-disable-line react-hooks/purity
         // Swap orders
-        await db.workoutExercises.update(ex1.id!, { order: newIndex, updatedAt: Date.now() });
-        await db.workoutExercises.update(ex2.id!, { order: index, updatedAt: Date.now() });
+        await db.workoutExercises.update(ex1.id!, { order: newIndex, updatedAt: now });
+        await db.workoutExercises.update(ex2.id!, { order: index, updatedAt: now });
     };
 
     return (

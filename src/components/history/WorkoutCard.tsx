@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { Card } from '../common/Card';
 import { Calendar, Edit2, Trash2, Dumbbell } from 'lucide-react';
-import type { Workout } from '../../types';
+import type { Workout, SetEntry } from '../../types';
 
 interface WorkoutCardProps {
   workout: Workout;
@@ -25,7 +25,7 @@ export const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, onEdit, onDel
   const allSets = useLiveQuery(async () => {
     if (!workoutExercises || workoutExercises.length === 0) return [];
     const workoutExerciseUuids = workoutExercises.map(we => we.uuid);
-    const sets: any[] = [];
+    const sets: SetEntry[] = [];
     for (const uuid of workoutExerciseUuids) {
       const exerciseSets = await db.sets.where('workoutExerciseId').equals(uuid).toArray();
       sets.push(...exerciseSets);

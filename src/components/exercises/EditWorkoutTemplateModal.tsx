@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { X, ArrowUp, ArrowDown, Trash2, Search, Plus } from 'lucide-react';
@@ -13,10 +13,19 @@ interface EditWorkoutTemplateModalProps {
 }
 
 export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> = ({ isOpen, onClose, template }) => {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [selectedExerciseIds, setSelectedExerciseIds] = useState<string[]>([]);
+    const [name, setName] = useState(template?.name || '');
+    const [description, setDescription] = useState(template?.description || '');
+    const [selectedExerciseIds, setSelectedExerciseIds] = useState<string[]>(template?.exercises || []);
     const [search, setSearch] = useState('');
+
+    // Reset state when template prop changes (state-during-render pattern)
+    const [prevTemplate, setPrevTemplate] = useState(template);
+    if (template !== prevTemplate) {
+        setPrevTemplate(template);
+        setName(template?.name || '');
+        setDescription(template?.description || '');
+        setSelectedExerciseIds(template?.exercises || []);
+    }
 
     const exercises = useLiveQuery(async () => {
         const all = await db.exercises.orderBy('name').toArray();
@@ -30,22 +39,6 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
         for (const ex of exercises || []) map.set(ex.uuid, ex);
         return map;
     }, [exercises]);
-
-    useEffect(() => {
-        if (template) {
-            setName(prev => prev !== template.name ? template.name : prev);
-            setDescription(prev => prev !== (template.description || '') ? (template.description || '') : prev);
-            setSelectedExerciseIds(prev => {
-                const next = template.exercises || [];
-                if (prev.length !== next.length || prev.some((v, i) => v !== next[i])) return next;
-                return prev;
-            });
-        } else {
-            setName('');
-            setDescription('');
-            setSelectedExerciseIds([]);
-        }
-    }, [template]);
 
     const handleAddExercise = (id: string) => {
         setSelectedExerciseIds(prev => [...prev, id]);

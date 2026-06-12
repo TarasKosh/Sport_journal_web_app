@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Search, Trash2, Edit2, Dumbbell } from 'lucide-react';
 
@@ -14,12 +14,14 @@ export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ crea
     const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<WorkoutTemplate | undefined>(undefined);
+    const prevTrigger = useRef(createTrigger);
 
     useEffect(() => {
-        if (createTrigger > 0) {
-            setEditingTemplate(undefined);
+        if (createTrigger > prevTrigger.current) {
+            setEditingTemplate(undefined); // eslint-disable-line react-hooks/set-state-in-effect
             setIsModalOpen(true);
         }
+        prevTrigger.current = createTrigger;
     }, [createTrigger]);
 
     const templates = useLiveQuery(async () => {
@@ -96,7 +98,7 @@ export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ crea
                             <button
                                 onClick={async (e) => {
                                     e.stopPropagation();
-                                    if (confirm(`Delete \"${t.name}\"? This cannot be undone.`)) {
+                                    if (confirm(`Delete "${t.name}"? This cannot be undone.`)) {
                                         await db.workoutTemplates.delete(t.id!);
                                     }
                                 }}

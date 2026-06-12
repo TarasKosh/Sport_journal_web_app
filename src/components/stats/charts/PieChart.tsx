@@ -6,55 +6,60 @@ const PIE_COLORS = [
     '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'
 ];
 
+const CENTER_X = 80;
+const CENTER_Y = 80;
+const RADIUS = 60;
+
+function computeSlices(data: { name: string; volume: number }[], total: number) {
+    const limited = data.slice(0, 8);
+    let cumulativeAngle = 0;
+
+    return limited.map((item) => {
+        const sliceAngle = (item.volume / total) * 360;
+        const startAngle = cumulativeAngle;
+        const endAngle = cumulativeAngle + sliceAngle;
+        cumulativeAngle = endAngle;
+
+        const startRad = (startAngle - 90) * Math.PI / 180;
+        const endRad = (endAngle - 90) * Math.PI / 180;
+
+        const x1 = CENTER_X + RADIUS * Math.cos(startRad);
+        const y1 = CENTER_Y + RADIUS * Math.sin(startRad);
+        const x2 = CENTER_X + RADIUS * Math.cos(endRad);
+        const y2 = CENTER_Y + RADIUS * Math.sin(endRad);
+        const largeArcFlag = sliceAngle > 180 ? 1 : 0;
+
+        return `M ${CENTER_X} ${CENTER_Y} L ${x1} ${y1} A ${RADIUS} ${RADIUS} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+    });
+}
+
 export const PieChart: React.FC<{ data: { name: string; volume: number }[] }> = ({ data }) => {
-    if (data.length === 0) {
-        return (
-            <div className="h-40 flex items-center justify-center text-text-tertiary">
-                No data available
-            </div>
-        );
-    }
-
     const total = data.reduce((sum, item) => sum + item.volume, 0);
-    if (total === 0) {
+
+    const paths = React.useMemo(() => {
+        if (data.length === 0 || total === 0) return [];
+        return computeSlices(data, total);
+    }, [data, total]);
+
+    if (data.length === 0 || total === 0) {
         return (
             <div className="h-40 flex items-center justify-center text-text-tertiary">
                 No data available
             </div>
         );
     }
-
-    const centerX = 80;
-    const centerY = 80;
-    const radius = 60;
-    let startAngle = 0;
 
     return (
         <div className="flex justify-center py-2">
             <svg width="160" height="160" viewBox="0 0 160 160">
-                {data.slice(0, 8).map((item, index) => {
-                    const sliceAngle = (item.volume / total) * 360;
-                    const endAngle = startAngle + sliceAngle;
-                    const startRad = (startAngle - 90) * Math.PI / 180;
-                    const endRad = (endAngle - 90) * Math.PI / 180;
-
-                    const x1 = centerX + radius * Math.cos(startRad);
-                    const y1 = centerY + radius * Math.sin(startRad);
-                    const x2 = centerX + radius * Math.cos(endRad);
-                    const y2 = centerY + radius * Math.sin(endRad);
-                    const largeArcFlag = sliceAngle > 180 ? 1 : 0;
-
-                    const pathData = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
-                    const color = PIE_COLORS[index % PIE_COLORS.length];
-                    startAngle = endAngle;
-
-                    return <path key={index} d={pathData} fill={color} stroke="#fff" strokeWidth="1" />;
-                })}
-                <circle cx={centerX} cy={centerY} r="20" fill="#fff" />
-                <text x={centerX} y={centerY - 5} textAnchor="middle" className="text-xs font-bold fill-text-primary">
+                {paths.map((d, index) => (
+                    <path key={index} d={d} fill={PIE_COLORS[index % PIE_COLORS.length]} stroke="#fff" strokeWidth="1" />
+                ))}
+                <circle cx={CENTER_X} cy={CENTER_Y} r="20" fill="#fff" />
+                <text x={CENTER_X} y={CENTER_Y - 5} textAnchor="middle" className="text-xs font-bold fill-text-primary">
                     {formatNumber(total)}
                 </text>
-                <text x={centerX} y={centerY + 10} textAnchor="middle" className="text-xs fill-text-secondary">
+                <text x={CENTER_X} y={CENTER_Y + 10} textAnchor="middle" className="text-xs fill-text-secondary">
                     Total
                 </text>
             </svg>
