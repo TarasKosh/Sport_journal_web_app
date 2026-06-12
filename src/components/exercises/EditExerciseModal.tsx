@@ -65,11 +65,12 @@ export const EditExerciseModal: React.FC<EditExerciseModalProps> = ({ isOpen, on
             aria-modal="true"
             aria-labelledby="edit-exercise-title"
             onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div className="bg-bg-secondary w-full max-w-md rounded-xl shadow-xl overflow-hidden animate-slide-up sm:animate-zoom-in">
                 <div className="flex justify-between items-center p-4 border-b border-border">
                     <h2 id="edit-exercise-title" className="text-lg font-bold">{exercise ? 'Edit Exercise' : 'New Exercise'}</h2>
-                    <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X size={24} /></button>
+                    <button onClick={onClose} className="text-text-secondary hover:text-text-primary" aria-label="Close"><X size={24} /></button>
                 </div>
 
                 <div className="p-4 space-y-4">

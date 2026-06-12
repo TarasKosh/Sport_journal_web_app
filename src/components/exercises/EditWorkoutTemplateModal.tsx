@@ -101,6 +101,7 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
             aria-modal="true"
             aria-labelledby="edit-template-title"
             onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div
                 className="bg-bg-secondary w-full max-w-3xl rounded-xl shadow-xl overflow-hidden animate-slide-up sm:animate-zoom-in flex flex-col"
@@ -108,7 +109,7 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
             >
                 <div className="flex justify-between items-center p-4 border-b border-border">
                     <h2 id="edit-template-title" className="text-lg font-bold">{template ? 'Edit Template' : 'New Template'}</h2>
-                    <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X size={24} /></button>
+                    <button onClick={onClose} className="text-text-secondary hover:text-text-primary" aria-label="Close"><X size={24} /></button>
                 </div>
 
                 <div

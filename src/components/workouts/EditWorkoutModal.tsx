@@ -178,6 +178,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
       aria-modal="true"
       aria-labelledby="edit-workout-title"
       onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-bg-primary w-full h-full sm:w-[95vw] sm:h-[95vh] sm:max-w-6xl sm:max-h-[95vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-fade-in">
 

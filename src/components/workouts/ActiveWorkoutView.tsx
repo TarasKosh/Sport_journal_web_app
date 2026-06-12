@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { Workout, WorkoutExercise } from '../../types';
 import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -43,6 +43,9 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
         const list = await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray();
         return list.sort((a, b) => a.order - b.order);
     }, [workout.uuid]);
+
+    const exercisesRef = useRef(exercises);
+    useEffect(() => { exercisesRef.current = exercises; }, [exercises]);
 
     const handleAddExercise = useCallback(async (exerciseId: string) => {
         try {
@@ -92,7 +95,7 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
         onFinished?.(workout.uuid);
     }, [workout.id, workout.uuid, onFinished]);
 
-    const cancelWorkout = async () => {
+    const cancelWorkout = useCallback(async () => {
         if (!confirmDiscard) {
             setConfirmDiscard(true);
             setTimeout(() => setConfirmDiscard(false), 3000);
@@ -100,7 +103,7 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
         }
         await db.workouts.delete(workout.id!);
         onDiscarded?.(workout.uuid);
-    };
+    }, [workout.id, workout.uuid, onDiscarded, confirmDiscard]);
 
     const deleteExercise = useCallback(async (workoutExerciseId: number) => {
         if (confirmDeleteExerciseId !== workoutExerciseId) {
@@ -109,7 +112,8 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
             return;
         }
 
-        const we = exercises?.find(e => e.id === workoutExerciseId);
+        const currentExercises = exercisesRef.current;
+        const we = currentExercises?.find(e => e.id === workoutExerciseId);
         if (!we) return;
 
         const now = Date.now();
@@ -119,29 +123,30 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
         // Delete the workout exercise
         await db.workoutExercises.delete(workoutExerciseId);
         // Reorder remaining exercises
-        if (exercises) {
-            const remaining = exercises.filter(e => e.id !== workoutExerciseId);
+        if (currentExercises) {
+            const remaining = currentExercises.filter(e => e.id !== workoutExerciseId);
             for (let i = 0; i < remaining.length; i++) {
                 await db.workoutExercises.update(remaining[i].id!, { order: i, updatedAt: now });
             }
         }
         setConfirmDeleteExerciseId(null);
-    }, [confirmDeleteExerciseId, exercises]);
+    }, [confirmDeleteExerciseId]);
 
     const moveExercise = useCallback(async (index: number, direction: 'up' | 'down') => {
-        if (!exercises) return;
+        const currentExercises = exercisesRef.current;
+        if (!currentExercises) return;
 
         const newIndex = direction === 'up' ? index - 1 : index + 1;
-        if (newIndex < 0 || newIndex >= exercises.length) return;
+        if (newIndex < 0 || newIndex >= currentExercises.length) return;
 
-        const ex1 = exercises[index];
-        const ex2 = exercises[newIndex];
+        const ex1 = currentExercises[index];
+        const ex2 = currentExercises[newIndex];
 
         const now = Date.now();
         // Swap orders
         await db.workoutExercises.update(ex1.id!, { order: newIndex, updatedAt: now });
         await db.workoutExercises.update(ex2.id!, { order: index, updatedAt: now });
-    }, [exercises]);
+    }, []);
 
     return (
         <div className="flex flex-col h-full bg-bg-primary">

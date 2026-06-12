@@ -29,6 +29,7 @@ export const WorkoutDayPickerModal: React.FC<WorkoutDayPickerModalProps> = ({
             aria-modal="true"
             aria-labelledby="workout-day-title"
             onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div className="bg-bg-primary w-full sm:max-w-md flex flex-col rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden animate-slide-up">
                 <div className="bg-gradient-to-br from-accent to-accent-hover text-white p-6 pb-5">
@@ -40,6 +41,7 @@ export const WorkoutDayPickerModal: React.FC<WorkoutDayPickerModalProps> = ({
                         <button
                             onClick={onClose}
                             className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                            aria-label="Close"
                         >
                             <X size={24} />
                         </button>

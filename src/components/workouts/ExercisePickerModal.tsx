@@ -60,15 +60,17 @@ export const ExercisePickerModal: React.FC<ExercisePickerModalProps> = ({ isOpen
             aria-modal="true"
             aria-labelledby="exercise-picker-title"
             onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div className="bg-bg-primary w-full sm:max-w-2xl h-[90vh] sm:h-[85vh] flex flex-col rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden animate-slide-up">
                 {/* Header */}
                 <div className="bg-gradient-to-br from-accent to-accent-hover text-white p-6 pb-5">
                     <div className="flex justify-between items-center mb-4">
                         <h2 id="exercise-picker-title" className="text-2xl font-bold">Add Exercise</h2>
-                        <button 
-                            onClick={onClose} 
+                        <button
+                            onClick={onClose}
                             className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                            aria-label="Close"
                         >
                             <X size={24} />
                         </button>
