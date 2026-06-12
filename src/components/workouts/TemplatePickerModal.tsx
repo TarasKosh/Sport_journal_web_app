@@ -15,12 +15,18 @@ export const TemplatePickerModal: React.FC<TemplatePickerModalProps> = ({ isOpen
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="template-picker-title"
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}
+        >
             <div className="bg-bg-primary w-full sm:max-w-2xl h-[90vh] sm:h-[85vh] flex flex-col rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden animate-slide-up">
                 {/* Header */}
                 <div className="bg-gradient-to-br from-accent to-accent-hover text-white p-6 pb-5">
                     <div className="flex justify-between items-center">
-                        <h2 className="text-2xl font-bold">Workout Templates</h2>
+                        <h2 id="template-picker-title" className="text-2xl font-bold">Workout Templates</h2>
                         <button 
                             onClick={onClose} 
                             className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"

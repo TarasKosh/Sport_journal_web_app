@@ -19,7 +19,7 @@ interface SetListProps {
     onMoveDown?: () => void;
 }
 
-export const SetList: React.FC<SetListProps> = ({
+export const SetList: React.FC<SetListProps> = React.memo(({
     workoutExercise,
     exerciseName,
     isUnilateral,
@@ -235,4 +235,4 @@ export const SetList: React.FC<SetListProps> = ({
             </div>
         </Card>
     );
-};
+});

@@ -6,6 +6,7 @@ import { Calendar, CheckCircle, Minus, Play, Plus, Trash2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { ActiveWorkoutView } from './ActiveWorkoutView';
 import { WorkoutDayPickerModal } from './WorkoutDayPickerModal';
+import { toDayString, workoutDayToDate } from '../../utils/dateUtils';
 
 export const WorkoutPage: React.FC = () => {
     const [finishedWorkoutUuid, setFinishedWorkoutUuid] = useState<string | null>(null);
@@ -242,12 +243,4 @@ export const WorkoutPage: React.FC = () => {
     );
 };
 
-// Helper function to convert date to string in the format 'YYYY-MM-DD'
-function toDayString(date: Date) {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
 
-function workoutDayToDate(workoutDay: string) {
-    const [y, m, d] = workoutDay.split('-').map(Number);
-    return new Date(y, (m || 1) - 1, d || 1);
-}

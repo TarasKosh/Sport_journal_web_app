@@ -2,7 +2,7 @@ import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { Card } from '../common/Card';
-import { MassUnit } from '../../types';
+import { MassUnit, type Settings } from '../../types';
 import { SyncPage } from '../sync/SyncPage';
 import { usePWA } from '../../hooks/usePWA';
 import { Download, CheckCircle2 } from 'lucide-react';
@@ -12,7 +12,8 @@ export const SettingsPage: React.FC = () => {
     const settings = useLiveQuery(() => db.settings.toCollection().first());
     const { isInstallable, isInstalled, installApp } = usePWA();
 
-    const updateSetting = async (key: string, value: string | number | boolean) => {
+    type SettingsKey = Exclude<keyof Settings, 'id'>;
+    const updateSetting = async (key: SettingsKey, value: string | number | boolean) => {
         if (settings) {
             await db.settings.update(settings.id!, { [key]: value });
         } else {

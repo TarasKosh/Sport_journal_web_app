@@ -23,13 +23,19 @@ export const WorkoutDayPickerModal: React.FC<WorkoutDayPickerModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="workout-day-title"
+            onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+        >
             <div className="bg-bg-primary w-full sm:max-w-md flex flex-col rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden animate-slide-up">
                 <div className="bg-gradient-to-br from-accent to-accent-hover text-white p-6 pb-5">
                     <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
                             <Calendar size={20} />
-                            <h2 className="text-2xl font-bold">Workout Day</h2>
+                            <h2 id="workout-day-title" className="text-2xl font-bold">Workout Day</h2>
                         </div>
                         <button
                             onClick={onClose}

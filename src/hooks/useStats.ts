@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type { StatsData, StatsPeriod } from '../services/stats';
+import { toDayString } from '../utils/dateUtils';
 import {
     filterWorkoutsByPeriod,
     calculateAvgWorkoutsPerWeek,
@@ -32,8 +33,6 @@ export function useStats(period: StatsPeriod): StatsData | null {
         const avgWorkoutsPerWeek = calculateAvgWorkoutsPerWeek(filteredWorkouts, period);
 
         // This week count
-        const toDayString = (d: Date) =>
-            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const now = new Date();
         const startOfWeek = new Date(now);
         startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());

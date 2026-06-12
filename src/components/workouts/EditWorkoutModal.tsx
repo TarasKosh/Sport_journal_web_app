@@ -26,7 +26,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   // Metadata states
   const [title, setTitle] = useState(workout.title || '');
   const [notes, setNotes] = useState(workout.notes || '');
-  const [mood, setMood] = useState(workout.mood || 'neutral');
+  const [mood, setMood] = useState<Workout['mood']>(workout.mood || 'neutral');
   const [bodyWeight, setBodyWeight] = useState(workout.bodyWeight?.toString() || '');
   const [workoutDay, setWorkoutDay] = useState(workout.workoutDay || '');
 
@@ -172,7 +172,13 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-workout-title"
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+    >
       <div className="bg-bg-primary w-full h-full sm:w-[95vw] sm:h-[95vh] sm:max-w-6xl sm:max-h-[95vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-fade-in">
 
         {/* ── Collapsible Header ── */}
@@ -192,7 +198,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
                 className="flex-shrink-0 text-white/80 transition-transform duration-300"
                 style={{ transform: isHeaderExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
               />
-              <h2 className="text-lg font-bold truncate">
+              <h2 id="edit-workout-title" className="text-lg font-bold truncate">
                 {title.trim() || 'Edit Workout'}
               </h2>
             </button>
