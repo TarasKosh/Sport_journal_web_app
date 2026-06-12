@@ -140,3 +140,7 @@ body {
 /* ── Legacy gap utilities ── */
 .gap-sm { gap: var(--spacing-sm); }
 .gap-md { gap: var(--spacing-md); }
+
+/* ── No-scrollbar utility ── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

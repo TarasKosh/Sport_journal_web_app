@@ -102,11 +102,11 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
 
     return (
         <div
-            className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+            className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in"
             style={{ zIndex: 70 }}
         >
             <div
-                className="bg-bg-secondary w-full max-w-3xl rounded-xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200 flex flex-col"
+                className="bg-bg-secondary w-full max-w-3xl rounded-xl shadow-xl overflow-hidden animate-slide-up sm:animate-zoom-in flex flex-col"
                 style={{ height: 'calc(100vh - 2rem)', maxHeight: 'calc(100vh - 2rem)' }}
             >
                 <div className="flex justify-between items-center p-4 border-b border-border">

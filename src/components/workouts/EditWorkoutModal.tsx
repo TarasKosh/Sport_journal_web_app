@@ -170,8 +170,8 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-bg-primary w-full h-full sm:w-[95vw] sm:h-[95vh] sm:max-w-6xl sm:max-h-[95vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="bg-bg-primary w-full h-full sm:w-[95vw] sm:h-[95vh] sm:max-w-6xl sm:max-h-[95vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-fade-in">
 
         {/* ── Collapsible Header ── */}
         <div className="bg-gradient-to-br from-accent to-accent-hover text-white flex-shrink-0 relative">
@@ -198,7 +198,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
             {/* Saved badge + close */}
             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
               {showSavedNotification && (
-                <div className="bg-white/95 text-accent px-3 py-1 rounded-lg flex items-center gap-1.5 animate-in fade-in slide-in-from-right-3">
+                <div className="bg-white/95 text-accent px-3 py-1 rounded-lg flex items-center gap-1.5 animate-fade-in">
                   <CheckCircle size={14} className="text-success" />
                   <span className="font-semibold text-xs">Saved</span>
                 </div>
