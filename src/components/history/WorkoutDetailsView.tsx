@@ -68,7 +68,7 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
     allSets.forEach(set => {
       if (set.reps != null && !isNaN(set.reps)) {
         totalReps += set.reps;
-        const load = set.weight || 0;
+        const load = set.weight ?? 0;
         totalTonnage += load * set.reps;
       }
     });
