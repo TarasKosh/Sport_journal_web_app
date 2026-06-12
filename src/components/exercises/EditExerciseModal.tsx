@@ -62,10 +62,10 @@ export const EditExerciseModal: React.FC<EditExerciseModalProps> = ({ isOpen, on
 
     return (
         <div
-            className="fixed inset-0 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+            className="fixed inset-0 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in"
             style={{ zIndex: 70 }}
         >
-            <div className="bg-bg-secondary w-full max-w-md rounded-xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
+            <div className="bg-bg-secondary w-full max-w-md rounded-xl shadow-xl overflow-hidden animate-slide-up sm:animate-zoom-in">
                 <div className="flex justify-between items-center p-4 border-b border-border">
                     <h2 className="text-lg font-bold">{exercise ? 'Edit Exercise' : 'New Exercise'}</h2>
                     <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X size={24} /></button>

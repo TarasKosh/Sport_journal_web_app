@@ -125,7 +125,7 @@ export const SetList: React.FC<SetListProps> = ({
 
 
     return (
-        <Card className="flex flex-col bg-bg-secondary p-0 rounded-xl border border-border/60 shadow-md overflow-hidden animate-in fade-in slide-in-from-bottom-10">
+        <Card className="flex flex-col bg-bg-secondary p-0 rounded-xl border border-border/60 shadow-md overflow-hidden animate-slide-up">
             {/* Redesigned Multi-row Header */}
             <div className="flex flex-col p-4 gap-3 border-b border-border/40 bg-bg-secondary relative">
 
