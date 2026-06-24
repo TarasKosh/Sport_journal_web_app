@@ -45,7 +45,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   const [showSavedNotification, setShowSavedNotification] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useFocusTrap(isOpen, containerRef);
 
   useEffect(() => {
