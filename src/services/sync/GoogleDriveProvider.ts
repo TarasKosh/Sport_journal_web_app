@@ -69,6 +69,37 @@ export class GoogleDriveSyncProvider implements SyncProvider {
 
     private accessToken: string | null = null;
     private readonly CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    private static readonly MAX_RETRIES = 3;
+    private static readonly RETRY_DELAY_MS = 1000;
+
+    private async sleep(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    private shouldRetry(status: number): boolean {
+        return status === 429 || status >= 500;
+    }
+
+    private async retryableFetch(input: string, init: RequestInit, attempt = 0): Promise<Response> {
+        try {
+            const response = await fetch(input, init);
+            if (this.shouldRetry(response.status) && attempt < GoogleDriveSyncProvider.MAX_RETRIES) {
+                const delay = GoogleDriveSyncProvider.RETRY_DELAY_MS * Math.pow(2, attempt);
+                console.warn(`Google Drive API retry ${attempt + 1}/${GoogleDriveSyncProvider.MAX_RETRIES} after ${delay}ms (status ${response.status})`);
+                await this.sleep(delay);
+                return this.retryableFetch(input, init, attempt + 1);
+            }
+            return response;
+        } catch (err) {
+            if (attempt < GoogleDriveSyncProvider.MAX_RETRIES) {
+                const delay = GoogleDriveSyncProvider.RETRY_DELAY_MS * Math.pow(2, attempt);
+                console.warn(`Google Drive API network retry ${attempt + 1}/${GoogleDriveSyncProvider.MAX_RETRIES} after ${delay}ms`, err);
+                await this.sleep(delay);
+                return this.retryableFetch(input, init, attempt + 1);
+            }
+            throw err;
+        }
+    }
 
     private ensureConfigured(): void {
         if (!this.CLIENT_ID) {
@@ -150,7 +181,7 @@ export class GoogleDriveSyncProvider implements SyncProvider {
         const headers = new Headers(init.headers);
         headers.set('Authorization', `Bearer ${this.accessToken}`);
 
-        const response = await fetch(input, {
+        const response = await this.retryableFetch(input, {
             ...init,
             headers,
         });

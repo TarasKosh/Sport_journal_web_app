@@ -67,18 +67,11 @@ export class AppDatabase extends Dexie {
             conflictLog: '++id, &uuid, entityType, entityId',
             workoutTemplates: '++id, &uuid, name, isCustom, updatedAt, deletedAt'
         }).upgrade(async (tx) => {
-            const toDayString = (ts: number) => {
-                const d = new Date(ts);
-                const y = d.getFullYear();
-                const m = String(d.getMonth() + 1).padStart(2, '0');
-                const day = String(d.getDate()).padStart(2, '0');
-                return `${y}-${m}-${day}`;
-            };
-
             await tx.table('workouts').toCollection().modify((w: Workout) => {
                 if (!w.workoutDay) {
                     const ts = typeof w.startedAt === 'number' ? w.startedAt : Date.now();
-                    w.workoutDay = toDayString(ts);
+                    const d = new Date(ts);
+                    w.workoutDay = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                 }
             });
         });

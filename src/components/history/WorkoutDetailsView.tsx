@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
-import type { Workout, WorkoutExercise, SetEntry } from '../../types';
+import type { Exercise, Workout, WorkoutExercise, SetEntry } from '../../types';
 import { ArrowLeft, Edit2, Calendar, Clock, Heart, Scale, FileText, ChevronDown, ChevronUp, Dumbbell } from 'lucide-react';
 import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { EditWorkoutModal } from '../workouts/EditWorkoutModal';
+import { workoutDayToDate } from '../../utils/dateUtils';
+import { safeNum } from '../../utils';
 
 interface WorkoutDetailsViewProps {
   workout: Workout;
@@ -35,22 +37,27 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
     }
   }, [workoutExercises]);
 
+  // Batch-load exercises to avoid N+1 queries
+  const allExercises = useLiveQuery(() => db.exercises.toArray(), []);
+  const exerciseMap = useMemo(() => {
+    const map = new Map<string, Exercise>();
+    for (const ex of allExercises ?? []) map.set(ex.uuid, ex);
+    return map;
+  }, [allExercises]);
+
   // Load all sets for all exercises
   const allSets = useLiveQuery(async () => {
     if (!workoutExercises || workoutExercises.length === 0) return [];
     const workoutExerciseUuids = workoutExercises.map(we => we.uuid);
-    const sets: SetEntry[] = [];
-    for (const uuid of workoutExerciseUuids) {
-      const exerciseSets = await db.sets.where('workoutExerciseId').equals(uuid).toArray();
-      sets.push(...exerciseSets);
-    }
-    return sets.sort((a, b) => {
-      const weA = workoutExercises.find(we => we.uuid === a.workoutExerciseId);
-      const weB = workoutExercises.find(we => we.uuid === b.workoutExerciseId);
-      if (!weA || !weB) return 0;
-      if (weA.order !== weB.order) return weA.order - weB.order;
-      return a.order - b.order;
-    });
+    return await db.sets.where('workoutExerciseId').anyOf(workoutExerciseUuids).toArray()
+      .then(sets => {
+        const exerciseOrder = Object.fromEntries(workoutExercises.map((we, i) => [we.uuid, i]));
+        return sets.sort((a, b) => {
+          const orderA = exerciseOrder[a.workoutExerciseId] ?? 999;
+          const orderB = exerciseOrder[b.workoutExerciseId] ?? 999;
+          return orderA !== orderB ? orderA - orderB : a.order - b.order;
+        });
+      });
   }, [workoutExercises]);
 
   // Calculate summary statistics
@@ -68,10 +75,11 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
     let totalTonnage = 0;
 
     allSets.forEach(set => {
-      if (set.reps && !isNaN(set.reps)) {
-        totalReps += set.reps;
-        const load = set.weight || 0;
-        totalTonnage += load * set.reps;
+      const reps = safeNum(set.reps);
+      if (reps > 0) {
+        totalReps += reps;
+        const load = safeNum(set.weight);
+        totalTonnage += load * reps;
       }
     });
 
@@ -87,12 +95,6 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
   const duration = workout.endedAt && workout.startedAt
     ? Math.round((workout.endedAt - workout.startedAt) / 1000 / 60)
     : null;
-
-  // Format date
-  const workoutDayToDate = (workoutDay: string) => {
-    const [y, m, d] = workoutDay.split('-').map(Number);
-    return new Date(y, (m || 1) - 1, d || 1);
-  };
 
   const workoutDate = workoutDayToDate(workout.workoutDay);
 
@@ -110,7 +112,7 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
   };
 
   // Get mood emoji
-  const getMoodEmoji = (mood?: string) => {
+  const getMoodEmoji = (mood?: Workout['mood']) => {
     switch (mood) {
       case 'great': return '😊';
       case 'good': return '🙂';
@@ -226,17 +228,19 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
             <Card className="p-8 text-center">
               <p className="text-text-secondary">No exercises logged for this workout.</p>
             </Card>
-          ) : (
-            workoutExercises.map((we) => (
+          ) : (workoutExercises.map((we) => {
+            const exercise = exerciseMap.get(we.exerciseId);
+            return (
               <ExerciseCard
                 key={we.uuid}
+                exercise={exercise}
                 workoutExercise={we}
                 sets={allSets?.filter(s => s.workoutExerciseId === we.uuid).sort((a, b) => a.order - b.order) || []}
                 isExpanded={expandedExercises.has(we.uuid)}
                 onToggle={() => toggleExercise(we.uuid)}
               />
-            ))
-          )}
+            );
+          }))}
         </div>
       </div>
 
@@ -256,14 +260,13 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
 // Exercise Card Component
 interface ExerciseCardProps {
   workoutExercise: WorkoutExercise;
+  exercise?: Exercise;
   sets: SetEntry[];
   isExpanded: boolean;
   onToggle: () => void;
 }
 
-const ExerciseCard: React.FC<ExerciseCardProps> = ({ workoutExercise, sets, isExpanded, onToggle }) => {
-  const exercise = useLiveQuery(() => db.exercises.where('uuid').equals(workoutExercise.exerciseId).first());
-
+const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, workoutExercise, sets, isExpanded, onToggle }) => {
   if (!exercise) {
     return (
       <Card className="p-4">

@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { X, ArrowUp, ArrowDown, Trash2, Search, Plus } from 'lucide-react';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
+import { Button } from '../common/Button';
 
 import { db } from '../../db/db';
 import type { Exercise, WorkoutTemplate } from '../../types';
@@ -26,6 +28,9 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
         setDescription(template?.description || '');
         setSelectedExerciseIds(template?.exercises || []);
     }
+
+    const containerRef = useRef<HTMLDivElement>(null);
+    useFocusTrap(isOpen, containerRef);
 
     const exercises = useLiveQuery(async () => {
         const all = await db.exercises.orderBy('name').toArray();
@@ -95,16 +100,23 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
 
     return (
         <div
-            className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in"
-            style={{ zIndex: 70 }}
+            ref={containerRef}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-template-title"
+            aria-describedby="edit-template-desc"
+            onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
+            <span id="edit-template-desc" className="sr-only">Edit or create a workout template, manage exercises and their order.</span>
             <div
                 className="bg-bg-secondary w-full max-w-3xl rounded-xl shadow-xl overflow-hidden animate-slide-up sm:animate-zoom-in flex flex-col"
                 style={{ height: 'calc(100vh - 2rem)', maxHeight: 'calc(100vh - 2rem)' }}
             >
                 <div className="flex justify-between items-center p-4 border-b border-border">
-                    <h2 className="text-lg font-bold">{template ? 'Edit Template' : 'New Template'}</h2>
-                    <button onClick={onClose} className="text-text-secondary hover:text-text-primary"><X size={24} /></button>
+                    <h2 id="edit-template-title" className="text-lg font-bold">{template ? 'Edit Template' : 'New Template'}</h2>
+                    <button onClick={onClose} className="text-text-secondary hover:text-text-primary" aria-label="Close"><X size={24} /></button>
                 </div>
 
                 <div
@@ -119,7 +131,7 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="e.g. Push Day"
-                                autoFocus
+
                             />
                         </div>
 
@@ -220,7 +232,7 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
 
                 <div className="p-4 border-t border-border flex justify-end gap-3">
                     <button className="btn bg-transparent hover:bg-bg-tertiary" onClick={onClose}>Cancel</button>
-                    <button className="btn btn-primary" onClick={handleSave} disabled={!name.trim() || selectedExerciseIds.length === 0}>Save</button>
+                    <Button onClick={handleSave} disabled={!name.trim() || selectedExerciseIds.length === 0}>Save</Button>
                 </div>
             </div>
         </div>

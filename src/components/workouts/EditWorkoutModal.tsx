@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import type { Workout, WorkoutExercise } from '../../types';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
+import type { Exercise, Workout } from '../../types';
 import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Button } from '../common/Button';
@@ -8,6 +8,7 @@ import { ExercisePickerModal } from './ExercisePickerModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { SetList } from './WorkoutSetList';
 import { v4 as uuidv4 } from 'uuid';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 interface EditWorkoutModalProps {
   workout: Workout;
@@ -26,7 +27,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   // Metadata states
   const [title, setTitle] = useState(workout.title || '');
   const [notes, setNotes] = useState(workout.notes || '');
-  const [mood, setMood] = useState(workout.mood || 'neutral');
+  const [mood, setMood] = useState<Workout['mood']>(workout.mood || 'neutral');
   const [bodyWeight, setBodyWeight] = useState(workout.bodyWeight?.toString() || '');
   const [workoutDay, setWorkoutDay] = useState(workout.workoutDay || '');
 
@@ -43,15 +44,33 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   // Save notification state
   const [showSavedNotification, setShowSavedNotification] = useState(false);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  useFocusTrap(isOpen, containerRef);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
+
   // Load exercises for this workout
   const exercises = useLiveQuery(async () => {
     const list = await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray();
     return list.sort((a, b) => a.order - b.order);
   }, [workout.uuid]);
 
+  const allExercises = useLiveQuery(() => db.exercises.toArray(), []);
+  const exerciseMap = useMemo(() => {
+    const map = new Map<string, Exercise>();
+    for (const ex of allExercises ?? []) map.set(ex.uuid, ex);
+    return map;
+  }, [allExercises]);
+
   // Update local states when workout changes
   useEffect(() => {
     if (workout) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing prop-derived state
       setTitle(workout.title || '');
       setNotes(workout.notes || '');
       setMood(workout.mood || 'neutral');
@@ -63,6 +82,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   // Save metadata changes (debounced or on explicit save)
   const handleSaveMetadata = async () => {
     const parsedWeight = bodyWeight !== '' ? parseFloat(bodyWeight) : undefined;
+    if (bodyWeight !== '' && isNaN(parsedWeight!)) return;  // guard against invalid input
     try {
       await db.workouts.update(workout.id!, {
         title: title.trim() || undefined,
@@ -76,7 +96,8 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
 
       // Show saved notification
       setShowSavedNotification(true);
-      setTimeout(() => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
         setShowSavedNotification(false);
       }, 2000);
     } catch (e) {
@@ -137,7 +158,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
     const we = exercises?.find(e => e.id === workoutExerciseId);
     if (!we) return;
 
-    const now = Date.now(); // eslint-disable-line react-hooks/purity
+    const now = Date.now();
     // Delete all sets for this exercise
     const sets = await db.sets.where('workoutExerciseId').equals(we.uuid).toArray();
     await db.sets.bulkDelete(sets.map(s => s.id!));
@@ -163,7 +184,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
     const ex1 = exercises[index];
     const ex2 = exercises[newIndex];
 
-    const now = Date.now(); // eslint-disable-line react-hooks/purity
+    const now = Date.now();
     // Swap orders
     await db.workoutExercises.update(ex1.id!, { order: newIndex, updatedAt: now });
     await db.workoutExercises.update(ex2.id!, { order: index, updatedAt: now });
@@ -172,7 +193,17 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div
+      ref={containerRef}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-workout-title"
+      aria-describedby="edit-workout-desc"
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <span id="edit-workout-desc" className="sr-only">Edit workout details, add or remove exercises, and modify sets.</span>
       <div className="bg-bg-primary w-full h-full sm:w-[95vw] sm:h-[95vh] sm:max-w-6xl sm:max-h-[95vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-fade-in">
 
         {/* ── Collapsible Header ── */}
@@ -192,7 +223,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
                 className="flex-shrink-0 text-white/80 transition-transform duration-300"
                 style={{ transform: isHeaderExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
               />
-              <h2 className="text-lg font-bold truncate">
+              <h2 id="edit-workout-title" className="text-lg font-bold truncate">
                 {title.trim() || 'Edit Workout'}
               </h2>
             </button>
@@ -305,17 +336,19 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
           )}
 
           {exercises?.map((we, index) => (
-            <WorkoutExerciseItem
-              key={we.uuid}
-              workoutExercise={we}
-              index={index}
-              totalCount={exercises.length}
-              onDelete={() => deleteExercise(we.id!)}
-              isConfirmingDelete={confirmDeleteExerciseId === we.id}
-              onMoveUp={() => moveExercise(index, 'up')}
-              onMoveDown={() => moveExercise(index, 'down')}
-            />
-          ))}
+              <SetList
+                key={we.uuid}
+                workoutExercise={we}
+                exercise={exerciseMap.get(we.exerciseId)}
+                index={index}
+                totalCount={exercises.length}
+                onDelete={(id) => deleteExercise(id)}
+                workoutExerciseId={we.id!}
+                isConfirmingDelete={confirmDeleteExerciseId === we.id}
+                onMoveUp={moveExercise}
+                onMoveDown={moveExercise}
+              />
+            ))}
 
           {/* Add Buttons */}
           <div className="grid grid-cols-2 gap-3 pb-4">
@@ -369,31 +402,4 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   );
 };
 
-// Sub-component wrapper to fetch exercise name cleanly
-const WorkoutExerciseItem: React.FC<{
-  workoutExercise: WorkoutExercise;
-  index: number;
-  totalCount: number;
-  onDelete: () => void;
-  isConfirmingDelete: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-}> = ({ workoutExercise, index, totalCount, onDelete, isConfirmingDelete, onMoveUp, onMoveDown }) => {
-  const exercise = useLiveQuery(() => db.exercises.where('uuid').equals(workoutExercise.exerciseId).first());
 
-  if (!exercise) return <div className="animate-pulse bg-bg-tertiary h-20 rounded-lg"></div>;
-
-  return (
-    <SetList
-      workoutExercise={workoutExercise}
-      exerciseName={exercise.name}
-      isUnilateral={exercise.isUnilateral}
-      index={index}
-      totalCount={totalCount}
-      onDelete={onDelete}
-      isConfirmingDelete={isConfirmingDelete}  // Pass confirm state so Trash2 button shows "Sure?"
-      onMoveUp={onMoveUp}
-      onMoveDown={onMoveDown}
-    />
-  );
-};

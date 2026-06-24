@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { EditWorkoutModal } from '../workouts/EditWorkoutModal';
@@ -36,8 +36,7 @@ export const HistoryList: React.FC = () => {
     };
 
     // Handle workout card click
-    const handleWorkoutClick = (workout: Workout, e: React.MouseEvent) => {
-        // Don't open details if clicking on action buttons
+    const handleWorkoutClick = useCallback((workout: Workout, e: React.MouseEvent) => {
         const target = e.target as HTMLElement;
         if (target.closest('button')) {
             return;
@@ -47,33 +46,29 @@ export const HistoryList: React.FC = () => {
             scrollPositionRef.current = scrollContainerRef.current.scrollTop;
         }
         setSelectedWorkout(workout);
-    };
+    }, []);
 
     // Handle back from details
     const handleBackFromDetails = () => {
         setSelectedWorkout(null);
     };
 
-    if (!workouts) return <div className="p-4 text-center">Loading...</div>;
+    const handleEditWorkout = useCallback((w: Workout) => {
+        if (w.id) {
+            setEditingWorkout(w);
+        }
+    }, []);
 
-    // Show workout details if selected
-    if (selectedWorkout) {
-        return <WorkoutDetailsView workout={selectedWorkout} onBack={handleBackFromDetails} />;
-    }
-
-    // Delete workout and all related data (exercises, sets)
-    const handleDeleteWorkout = async (workout: Workout) => {
+    const handleDeleteWorkout = useCallback(async (workout: Workout) => {
         if (!workout.id) return;
-        
+
         if (confirm('Delete this workout? This cannot be undone.')) {
             try {
-                // Get all workout exercises for this workout
                 const workoutExercises = await db.workoutExercises
                     .where('workoutId')
                     .equals(workout.uuid)
                     .toArray();
 
-                // Delete all sets for each exercise
                 for (const we of workoutExercises) {
                     const sets = await db.sets
                         .where('workoutExerciseId')
@@ -84,19 +79,23 @@ export const HistoryList: React.FC = () => {
                     }
                 }
 
-                // Delete all workout exercises
                 if (workoutExercises.length > 0) {
                     await db.workoutExercises.bulkDelete(workoutExercises.map(we => we.id!));
                 }
 
-                // Delete the workout itself
                 await db.workouts.delete(workout.id);
             } catch (e) {
                 console.error('Failed to delete workout', e);
                 alert('Failed to delete workout. Please try again.');
             }
         }
-    };
+    }, []);
+
+    if (!workouts) return <div className="p-4 text-center">Loading...</div>;
+
+    if (selectedWorkout) {
+        return <WorkoutDetailsView workout={selectedWorkout} onBack={handleBackFromDetails} />;
+    }
 
     return (
         <div 
@@ -114,11 +113,7 @@ export const HistoryList: React.FC = () => {
                 <WorkoutCard
                     key={workout.uuid}
                     workout={workout}
-                    onEdit={(w) => {
-                        if (w.id) {
-                            setEditingWorkout(w);
-                        }
-                    }}
+                    onEdit={handleEditWorkout}
                     onDelete={handleDeleteWorkout}
                     onClick={handleWorkoutClick}
                 />

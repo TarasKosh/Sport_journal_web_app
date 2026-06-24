@@ -21,8 +21,8 @@ export default defineConfig({
         short_name: 'Journal',
         start_url: '.',
         display: 'standalone',
-        background_color: '#1a1a2e',
-        theme_color: '#6366f1',
+        background_color: '#f8f9fa',
+        theme_color: '#4ade80',
         icons: [
           {
             src: 'pwa-512x512.png',
@@ -66,6 +66,7 @@ export default defineConfig({
   ],
   test: {
     globals: true,
-    environment: 'node',
+    environment: 'jsdom',
+    setupFiles: ['./src/test-setup.ts'],
   },
 })

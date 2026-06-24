@@ -6,7 +6,7 @@ import clsx from 'clsx';
 import { useDebounce } from '../../hooks/useDebounce';
 
 interface SetItemProps {
-    set: SetEntry;
+    entry: SetEntry;
     index: number;
     isUnilateral?: boolean;
     variations?: string[];
@@ -49,6 +49,7 @@ const InputWithButtons = ({
         <div className="flex items-center h-full border-l-2 border-border flex-shrink-0">
             <button
                 onClick={onDecrement}
+                aria-label="Decrement"
                 className={clsx(
                     "h-full px-3 transition-colors flex items-center justify-center border-r-2 border-border",
                     isDanger ? "hover:bg-danger/10 active:bg-danger/20" : "hover:bg-accent/10 active:bg-accent/20"
@@ -58,6 +59,7 @@ const InputWithButtons = ({
             </button>
             <button
                 onClick={onIncrement}
+                aria-label="Increment"
                 className={clsx(
                     "h-full px-3 transition-colors flex items-center justify-center",
                     isDanger ? "hover:bg-danger/10 active:bg-danger/20" : "hover:bg-accent/10 active:bg-accent/20"
@@ -69,20 +71,20 @@ const InputWithButtons = ({
     </div>
 );
 
-export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnilateral, variations, onAddVariation }) => {
-    const [weight, setWeight] = useState(set.weight.toString());
-    const [reps, setReps] = useState(set.reps.toString());
-    const [rpe, setRpe] = useState(set.rpe?.toString() || '');
-    const [variation, setVariation] = useState(set.variation || '');
-    const [side, setSide] = useState<'left' | 'right' | undefined>(set.side);
-    const [isFailure, setIsFailure] = useState(set.isFailure);
-    const [failureRep, setFailureRep] = useState(set.failureRep?.toString() || set.reps.toString());
+export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUnilateral, variations, onAddVariation }) => {
+    const [weight, setWeight] = useState(entry.weight.toString());
+    const [reps, setReps] = useState(entry.reps.toString());
+    const [rpe, setRpe] = useState(entry.rpe?.toString() || '');
+    const [variation, setVariation] = useState(entry.variation || '');
+    const [side, setSide] = useState<'left' | 'right' | undefined>(entry.side);
+    const [isFailure, setIsFailure] = useState(entry.isFailure);
+    const [failureRep, setFailureRep] = useState(entry.failureRep?.toString() || entry.reps.toString());
 
-    // Reset variation when set.variation prop changes (state-during-render pattern)
-    const [prevVariation, setPrevVariation] = useState(set.variation);
-    if (set.variation !== prevVariation) {
-        setPrevVariation(set.variation);
-        setVariation(set.variation || '');
+    // Reset variation when entry.variation prop changes (state-during-render pattern)
+    const [prevVariation, setPrevVariation] = useState(entry.variation);
+    if (entry.variation !== prevVariation) {
+        setPrevVariation(entry.variation);
+        setVariation(entry.variation || '');
     }
 
     const debouncedWeight = useDebounce(weight, 500);
@@ -91,23 +93,21 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
     const debouncedFailureRep = useDebounce(failureRep, 500);
 
     useEffect(() => {
-        if (Number(debouncedWeight) === set.weight &&
-            Number(debouncedReps) === set.reps &&
-            (debouncedRpe === '' ? undefined : Number(debouncedRpe)) === set.rpe &&
-            (isFailure ? Number(debouncedFailureRep) : undefined) === set.failureRep) {
+        if (Number(debouncedWeight) === entry.weight &&
+            Number(debouncedReps) === entry.reps &&
+            (debouncedRpe === '' ? undefined : Number(debouncedRpe)) === entry.rpe &&
+            (isFailure ? Number(debouncedFailureRep) : undefined) === entry.failureRep) {
             return;
         }
 
-        db.sets.update(set.id!, {
+        db.sets.update(entry.id!, {
             weight: Number(debouncedWeight),
             reps: Number(debouncedReps),
             rpe: debouncedRpe ? Number(debouncedRpe) : undefined,
             failureRep: isFailure ? Number(debouncedFailureRep) : undefined,
             updatedAt: Date.now()
         }).catch(console.error);
-    }, [debouncedWeight, debouncedReps, debouncedRpe, debouncedFailureRep, isFailure, set.id, set.weight, set.reps, set.rpe, set.failureRep]);
-
-
+    }, [debouncedWeight, debouncedReps, debouncedRpe, debouncedFailureRep, isFailure, entry.id, entry.weight, entry.reps, entry.rpe, entry.failureRep]);
 
     const toggleFailure = () => {
         const newVal = !isFailure;
@@ -115,7 +115,7 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
         if (newVal && !failureRep) {
             setFailureRep(reps);
         }
-        db.sets.update(set.id!, {
+        db.sets.update(entry.id!, {
             isFailure: newVal,
             failureRep: newVal ? Number(failureRep || reps) : undefined,
             updatedAt: Date.now()
@@ -123,7 +123,7 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
     };
 
     const handleDelete = async () => {
-        await db.sets.delete(set.id!);
+        await db.sets.delete(entry.id!);
     };
 
     const activeRowClass = isFailure ? "rounded border-l-4 border-l-danger" : "hover:bg-bg-secondary/30 rounded border-l-4 border-l-transparent";
@@ -141,8 +141,6 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
         return unique;
     }, [variations, variation]);
 
-
-
     return (
         <div className={clsx("py-2 px-2 transition-colors", activeRowClass)}>
             {/* Header: Set Number + Delete Button */}
@@ -157,9 +155,10 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
                                 onClick={() => {
                                     if (side !== 'left') {
                                         setSide('left');
-                                        db.sets.update(set.id!, { side: 'left', updatedAt: Date.now() });
+                                        db.sets.update(entry.id!, { side: 'left', updatedAt: Date.now() });
                                     }
                                 }}
+                                aria-pressed={side === 'left'}
                                 className={clsx(
                                     "text-[10px] uppercase font-bold px-3 py-1 rounded-md cursor-pointer select-none transition-all",
                                     side === 'left' ? "bg-accent text-white shadow-sm" : "text-text-tertiary hover:text-text-secondary"
@@ -171,9 +170,10 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
                                 onClick={() => {
                                     if (side !== 'right') {
                                         setSide('right');
-                                        db.sets.update(set.id!, { side: 'right', updatedAt: Date.now() });
+                                        db.sets.update(entry.id!, { side: 'right', updatedAt: Date.now() });
                                     }
                                 }}
+                                aria-pressed={side === 'right'}
                                 className={clsx(
                                     "text-[10px] uppercase font-bold px-3 py-1 rounded-md cursor-pointer select-none transition-all",
                                     side === 'right' ? "bg-accent text-white shadow-sm" : "text-text-tertiary hover:text-text-secondary"
@@ -186,6 +186,7 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
                 </div>
                 <button
                     onClick={handleDelete}
+                    aria-label="Delete set"
                     className="p-2 text-text-tertiary hover:text-danger transition-colors opacity-40 hover:opacity-100"
                 >
                     <Trash2 size={16} />
@@ -200,8 +201,9 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
                     <button
                         onClick={() => {
                             setVariation('');
-                            db.sets.update(set.id!, { variation: undefined, updatedAt: Date.now() });
+                            db.sets.update(entry.id!, { variation: undefined, updatedAt: Date.now() });
                         }}
+                        aria-pressed={variation === ''}
                         className={clsx(
                             "px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider whitespace-nowrap border-2 transition-all",
                             variation === ''
@@ -218,8 +220,9 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
                             key={v}
                             onClick={() => {
                                 setVariation(v);
-                                db.sets.update(set.id!, { variation: v, updatedAt: Date.now() });
+                                db.sets.update(entry.id!, { variation: v, updatedAt: Date.now() });
                             }}
+                            aria-pressed={variation === v}
                             className={clsx(
                                 "px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider whitespace-nowrap border-2 transition-all",
                                 variation === v
@@ -234,6 +237,7 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
                     {/* Add New Button */}
                     <button
                         onClick={onAddVariation}
+                        aria-label="Add variation"
                         className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center bg-bg-tertiary text-text-tertiary border-2 border-dashed border-border/60 hover:border-accent hover:text-accent transition-all active:scale-90"
                         title="Add new variation"
                     >
@@ -284,6 +288,7 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ set, index, isUnila
             <div className="mt-2">
                 <button
                     onClick={toggleFailure}
+                    aria-pressed={isFailure}
                     className={clsx(
                         "flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all font-medium text-xs",
                         isFailure

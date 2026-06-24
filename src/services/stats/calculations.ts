@@ -1,5 +1,6 @@
 import type { Workout, SetEntry, Exercise, WorkoutExercise } from '../../types';
-import type { MuscleDistribution, MuscleWeekData } from './types';
+import { safeNum } from '../../utils';
+import type { MuscleDistribution, MuscleWeekData, StatsPeriod } from './types';
 
 /** Get the Monday-based week key for a timestamp */
 function getWeekKey(timestamp: number): string {
@@ -12,7 +13,7 @@ function getWeekKey(timestamp: number): string {
 }
 
 /** Filter workouts to only those within the given period */
-export function filterWorkoutsByPeriod(workouts: Workout[], period: string): Workout[] {
+export function filterWorkoutsByPeriod(workouts: Workout[], period: StatsPeriod): Workout[] {
     if (period === 'all') return workouts;
 
     const now = new Date();
@@ -32,7 +33,7 @@ export function filterWorkoutsByPeriod(workouts: Workout[], period: string): Wor
 }
 
 /** Calculate average workouts per week for the given period */
-export function calculateAvgWorkoutsPerWeek(workouts: Workout[], period: string): number {
+export function calculateAvgWorkoutsPerWeek(workouts: Workout[], period: StatsPeriod): number {
     if (workouts.length === 0) return 0;
 
     let weeks = 1;
@@ -65,13 +66,16 @@ export function calculateMuscleDistribution(
 
     const muscleGroups: Record<string, { volume: number; exercises: Record<string, number> }> = {};
 
+    const weMap: Record<string, WorkoutExercise> = {};
+    workoutExercises.forEach(we => { weMap[we.uuid] = we; });
+
     sets.forEach(set => {
-        const we = workoutExercises.find(w => w.uuid === set.workoutExerciseId);
+        const we = weMap[set.workoutExerciseId];
         if (!we) return;
         const exercise = exerciseMap[we.exerciseId];
         if (!exercise) return;
 
-        const volume = set.weight * set.reps;
+        const volume = safeNum(set.weight) * safeNum(set.reps);
         const mg = exercise.muscleGroup;
 
         if (!muscleGroups[mg]) muscleGroups[mg] = { volume: 0, exercises: {} };
@@ -131,7 +135,7 @@ export function calculateTonnageOverTime(
         if (!startedAt) return;
 
         const key = getWeekKey(startedAt);
-        weeklyData[key] = (weeklyData[key] || 0) + set.weight * set.reps;
+        weeklyData[key] = (weeklyData[key] || 0) + safeNum(set.weight) * safeNum(set.reps);
     });
 
     return Object.entries(weeklyData)
@@ -189,7 +193,7 @@ export function calculateMuscleDistributionOverTime(
 
         const key = getWeekKey(startedAt);
         if (!weeklyMuscles[key]) weeklyMuscles[key] = {};
-        weeklyMuscles[key][exercise.muscleGroup] = (weeklyMuscles[key][exercise.muscleGroup] || 0) + set.weight * set.reps;
+        weeklyMuscles[key][exercise.muscleGroup] = (weeklyMuscles[key][exercise.muscleGroup] || 0) + safeNum(set.weight) * safeNum(set.reps);
     });
 
     return Object.entries(weeklyMuscles)
@@ -203,10 +207,14 @@ export function calculateMuscleDistributionOverTime(
 
 /** Count exercises that have at least one set (simple PR metric) */
 export function calculatePRs(sets: SetEntry[], workoutExercises: WorkoutExercise[]): number {
+    const weMap: Record<string, WorkoutExercise> = {};
+    workoutExercises.forEach(we => { weMap[we.uuid] = we; });
+
     const exerciseSetMap: Record<string, boolean> = {};
 
     sets.forEach(set => {
-        const we = workoutExercises.find(w => w.uuid === set.workoutExerciseId);
+        if (set.isWarmup) return;
+        const we = weMap[set.workoutExerciseId];
         if (we) exerciseSetMap[we.exerciseId] = true;
     });
 

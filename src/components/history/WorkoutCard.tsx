@@ -3,7 +3,9 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { Card } from '../common/Card';
 import { Calendar, Edit2, Trash2, Dumbbell } from 'lucide-react';
-import type { Workout, SetEntry } from '../../types';
+import type { Workout } from '../../types';
+import { workoutDayToDate } from '../../utils/dateUtils';
+import { safeNum } from '../../utils';
 
 interface WorkoutCardProps {
   workout: Workout;
@@ -16,7 +18,7 @@ interface WorkoutCardProps {
  * Card component for displaying a workout in history list
  * Shows quick metrics: duration, exercise count, total tonnage
  */
-export const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, onEdit, onDelete, onClick }) => {
+export const WorkoutCard: React.FC<WorkoutCardProps> = React.memo(({ workout, onEdit, onDelete, onClick }) => {
   // Load exercises count and calculate tonnage
   const workoutExercises = useLiveQuery(async () => {
     return await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray();
@@ -25,12 +27,7 @@ export const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, onEdit, onDel
   const allSets = useLiveQuery(async () => {
     if (!workoutExercises || workoutExercises.length === 0) return [];
     const workoutExerciseUuids = workoutExercises.map(we => we.uuid);
-    const sets: SetEntry[] = [];
-    for (const uuid of workoutExerciseUuids) {
-      const exerciseSets = await db.sets.where('workoutExerciseId').equals(uuid).toArray();
-      sets.push(...exerciseSets);
-    }
-    return sets;
+    return await db.sets.where('workoutExerciseId').anyOf(workoutExerciseUuids).toArray();
   }, [workoutExercises]);
 
   // Calculate quick metrics
@@ -41,8 +38,10 @@ export const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, onEdit, onDel
 
     let tonnage = 0;
     allSets.forEach(set => {
-      if (set.reps && set.weight) {
-        tonnage += set.weight * set.reps;
+      const reps = safeNum(set.reps);
+      const weight = safeNum(set.weight);
+      if (reps > 0 && weight > 0) {
+        tonnage += weight * reps;
       }
     });
 
@@ -51,11 +50,6 @@ export const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, onEdit, onDel
       tonnage: Math.round(tonnage * 10) / 10
     };
   }, [workoutExercises, allSets]);
-
-  const workoutDayToDate = (workoutDay: string) => {
-    const [y, m, d] = workoutDay.split('-').map(Number);
-    return new Date(y, (m || 1) - 1, d || 1);
-  };
 
   const duration = workout.endedAt && workout.startedAt
     ? Math.round((workout.endedAt - workout.startedAt) / 1000 / 60)
@@ -115,5 +109,5 @@ export const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, onEdit, onDel
       </div>
     </Card>
   );
-};
+});
 
