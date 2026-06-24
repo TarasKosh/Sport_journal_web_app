@@ -6,6 +6,7 @@ export const MUSCLE_COLORS = [
 
 /** Format large numbers with k/M suffixes */
 export const formatNumber = (num: number): string => {
+    if (!Number.isFinite(num)) return '0';
     if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + 'M';
     if (num >= 1_000) return (num / 1_000).toFixed(1) + 'k';
     return num.toString();

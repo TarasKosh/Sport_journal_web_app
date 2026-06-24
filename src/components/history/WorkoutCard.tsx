@@ -5,6 +5,7 @@ import { Card } from '../common/Card';
 import { Calendar, Edit2, Trash2, Dumbbell } from 'lucide-react';
 import type { Workout } from '../../types';
 import { workoutDayToDate } from '../../utils/dateUtils';
+import { safeNum } from '../../utils';
 
 interface WorkoutCardProps {
   workout: Workout;
@@ -17,7 +18,7 @@ interface WorkoutCardProps {
  * Card component for displaying a workout in history list
  * Shows quick metrics: duration, exercise count, total tonnage
  */
-export const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, onEdit, onDelete, onClick }) => {
+export const WorkoutCard: React.FC<WorkoutCardProps> = React.memo(({ workout, onEdit, onDelete, onClick }) => {
   // Load exercises count and calculate tonnage
   const workoutExercises = useLiveQuery(async () => {
     return await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray();
@@ -37,8 +38,10 @@ export const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, onEdit, onDel
 
     let tonnage = 0;
     allSets.forEach(set => {
-      if (set.reps != null && set.weight != null) {
-        tonnage += set.weight * set.reps;
+      const reps = safeNum(set.reps);
+      const weight = safeNum(set.weight);
+      if (reps > 0 && weight > 0) {
+        tonnage += weight * reps;
       }
     });
 
@@ -106,5 +109,5 @@ export const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, onEdit, onDel
       </div>
     </Card>
   );
-};
+});
 

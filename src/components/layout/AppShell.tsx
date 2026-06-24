@@ -6,22 +6,14 @@ import clsx from 'clsx';
 
 // Simple CSS Module emulation or just inline styles for the Nav
 const NavItem = ({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) => (
-    <NavLink
-        to={to}
-        className={({ isActive }) => clsx(
-            'flex flex-col items-center justify-center w-full py-2 text-xs transition-colors',
-            isActive ? 'text-accent' : 'text-text-secondary hover:text-text-primary'
-        )}
-        style={{
-            color: 'var(--color-text-secondary)', // fallback
-        }}
-    >
-        {({ isActive }) => (
-            <>
-                <div style={{ color: isActive ? 'var(--color-accent)' : 'inherit' }}>{icon}</div>
-                <span style={{ color: isActive ? 'var(--color-accent)' : 'inherit', marginTop: '4px' }}>{label}</span>
-            </>
-        )}
+    <NavLink to={to} className={({ isActive }) => clsx(
+        'flex flex-col items-center justify-center w-full py-2 text-xs transition-colors',
+        isActive ? 'text-accent' : 'text-text-secondary hover:text-text-primary'
+    )} aria-label={label}>
+        {({ isActive }) => (<>
+            <div aria-hidden="true" style={{ color: isActive ? 'var(--color-accent)' : 'inherit' }}>{icon}</div>
+            <span style={{ color: isActive ? 'var(--color-accent)' : 'inherit', marginTop: '4px' }}>{label}</span>
+        </>)}
     </NavLink>
 );
 

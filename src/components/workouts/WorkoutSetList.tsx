@@ -1,5 +1,5 @@
 import React from 'react';
-import type { WorkoutExercise } from '../../types';
+import type { Exercise, WorkoutExercise } from '../../types';
 import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Plus, Dumbbell, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
@@ -9,33 +9,31 @@ import { SetItem } from './SetItem';
 
 interface SetListProps {
     workoutExercise: WorkoutExercise;
-    exerciseName: string;
-    isUnilateral?: boolean;
+    exercise?: Exercise;
     index?: number;
     totalCount?: number;
-    onDelete?: () => void;
+    onDelete?: (id: number) => void;
     isConfirmingDelete?: boolean;
-    onMoveUp?: () => void;
-    onMoveDown?: () => void;
+    onMoveUp?: (index: number, direction: 'up' | 'down') => void;
+    onMoveDown?: (index: number, direction: 'up' | 'down') => void;
+    workoutExerciseId?: number;
 }
 
 export const SetList: React.FC<SetListProps> = React.memo(({
     workoutExercise,
-    exerciseName,
-    isUnilateral,
+    exercise,
     index,
     totalCount,
     onDelete,
     isConfirmingDelete,
     onMoveUp,
-    onMoveDown
+    onMoveDown,
+    workoutExerciseId,
 }) => {
-    const [trackSides, setTrackSides] = React.useState(isUnilateral || false);
-
-    const exercise = useLiveQuery(
-        () => db.exercises.where('uuid').equals(workoutExercise.exerciseId).first(),
-        [workoutExercise.exerciseId]
-    );
+    const [trackSides, setTrackSides] = React.useState(exercise?.isUnilateral || false);
+    const [showAddVariation, setShowAddVariation] = React.useState(false);
+    const [newVariation, setNewVariation] = React.useState('');
+    const variations = React.useMemo(() => exercise?.variations || [], [exercise?.variations]);
 
     const sets = useLiveQuery(async () => {
         const s = await db.sets.where('workoutExerciseId').equals(workoutExercise.uuid).toArray();
@@ -106,10 +104,9 @@ export const SetList: React.FC<SetListProps> = React.memo(({
         });
     };
 
-    const handleAddVariation = async () => {
+    const handleSaveVariation = async () => {
         if (!exercise?.id) return;
-        const raw = prompt('Add variation (e.g., Overhand / Underhand):');
-        const next = raw?.trim();
+        const next = newVariation.trim();
         if (!next) return;
 
         const current = Array.isArray(exercise.variations) ? exercise.variations : [];
@@ -120,9 +117,14 @@ export const SetList: React.FC<SetListProps> = React.memo(({
             variations: [...current, next],
             updatedAt: Date.now()
         });
+        setNewVariation('');
+        setShowAddVariation(false);
     };
 
-
+    const handleCancelVariation = () => {
+        setNewVariation('');
+        setShowAddVariation(false);
+    };
 
     return (
         <Card className="flex flex-col bg-bg-secondary p-0 rounded-xl border border-border/60 shadow-md overflow-hidden animate-slide-up">
@@ -136,19 +138,20 @@ export const SetList: React.FC<SetListProps> = React.memo(({
                             <Dumbbell size={24} strokeWidth={1.5} className="text-accent/60" />
                         </div>
                         <h3 className="font-extrabold text-lg text-text-primary leading-tight truncate">
-                            {exerciseName}
+                            {exercise?.name || 'Unknown'}
                         </h3>
                     </div>
 
                     {/* Delete button - Always accessible in top right */}
                     {onDelete && (
                         <button
-                            onClick={onDelete}
+                            onClick={() => { if (workoutExerciseId != null) onDelete?.(workoutExerciseId); }}
                             className={`transition-all p-2.5 rounded-xl flex items-center gap-2 ${isConfirmingDelete
                                 ? 'bg-danger text-white font-bold shadow-lg shadow-danger/20'
                                 : 'bg-bg-tertiary text-text-tertiary hover:text-danger hover:bg-danger/10'
                                 }`}
                             title="Remove exercise"
+                            aria-label="Delete exercise"
                         >
                             <Trash2 size={18} />
                             {isConfirmingDelete && <span className="text-xs">Delete?</span>}
@@ -173,7 +176,6 @@ export const SetList: React.FC<SetListProps> = React.memo(({
                     >
                         {trackSides ? 'L/R Active' : 'L/R Off'}
                     </button>
-                    {/* Note: + Variation moved to set items for better UX */}
                 </div>
 
                 {/* Row 3: Move Controls & Stats */}
@@ -182,17 +184,19 @@ export const SetList: React.FC<SetListProps> = React.memo(({
                         {onMoveUp && onMoveDown && typeof index === 'number' && typeof totalCount === 'number' && (
                             <>
                                 <button
-                                    onClick={onMoveUp}
+                                    onClick={() => onMoveUp?.(index ?? 0, 'up')}
                                     disabled={index === 0}
                                     className="text-text-tertiary hover:text-accent disabled:opacity-20 transition-all p-1.5 hover:bg-white rounded-lg"
+                                    aria-label="Move exercise up"
                                 >
                                     <ChevronUp size={20} strokeWidth={2.5} />
                                 </button>
                                 <div className="w-px h-4 bg-border/40" />
                                 <button
-                                    onClick={onMoveDown}
+                                    onClick={() => onMoveDown?.(index ?? 0, 'down')}
                                     disabled={index === totalCount - 1}
                                     className="text-text-tertiary hover:text-accent disabled:opacity-20 transition-all p-1.5 hover:bg-white rounded-lg"
+                                    aria-label="Move exercise down"
                                 >
                                     <ChevronDown size={20} strokeWidth={2.5} />
                                 </button>
@@ -209,20 +213,46 @@ export const SetList: React.FC<SetListProps> = React.memo(({
                 </div>
             </div>
 
-
-
             {/* Sets List */}
             <div className="flex flex-col px-4 pb-4 gap-1 bg-bg-tertiary/10">
                 {sets?.map((set, index) => (
                     <SetItem
                         key={set.uuid}
-                        set={set}
+                        entry={set}
                         index={index}
                         isUnilateral={trackSides}
-                        variations={exercise?.variations || []}
-                        onAddVariation={handleAddVariation}
+                        variations={variations}
+                        onAddVariation={() => setShowAddVariation(true)}
                     />
                 ))}
+
+                {showAddVariation && (
+                    <div className="flex items-center gap-2 px-2 py-2 bg-bg-secondary rounded-xl border border-border/60">
+                        <input
+                            type="text"
+                            value={newVariation}
+                            onChange={e => setNewVariation(e.target.value)}
+                            placeholder="Variation name..."
+                            aria-label="New variation name"
+                            className="flex-1 bg-bg-tertiary border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                            autoFocus
+                        />
+                        <button
+                            onClick={handleSaveVariation}
+                            aria-label="Save variation"
+                            className="px-3 py-2 rounded-lg bg-accent text-white text-sm font-bold hover:bg-accent-hover transition-all"
+                        >
+                            Save
+                        </button>
+                        <button
+                            onClick={handleCancelVariation}
+                            aria-label="Cancel variation"
+                            className="px-3 py-2 rounded-lg bg-bg-tertiary text-text-secondary text-sm font-bold hover:bg-bg-tertiary/70 transition-all"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                )}
 
                 {/* Add Set Button - Prominent and visible */}
                 <button

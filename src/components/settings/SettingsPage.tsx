@@ -13,12 +13,18 @@ export const SettingsPage: React.FC = () => {
     const { isInstallable, isInstalled, installApp } = usePWA();
 
     type SettingsKey = Exclude<keyof Settings, 'id'>;
-    const updateSetting = async (key: SettingsKey, value: string | number | boolean) => {
+    const updateSetting = async <K extends SettingsKey>(key: K, value: Settings[K]) => {
         if (settings) {
             await db.settings.update(settings.id!, { [key]: value });
         } else {
-            // Should be seeded, but fallback
-            await db.settings.add({ [key]: value } as Record<string, string | number | boolean>);
+            await db.settings.add({
+                massUnit: 'kg',
+                weightStep: 2.5,
+                defaultRPEType: 'rpe',
+                theme: 'system',
+                language: 'en',
+                [key]: value,
+            } as Settings);
         }
     };
 

@@ -5,6 +5,7 @@ import type { Exercise } from '../../types';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { EditExerciseModal } from './EditExerciseModal';
+import { safeNum } from '../../utils';
 import { ArrowLeft, Edit2 } from 'lucide-react';
 
 // Simple SVG Chart Component
@@ -58,8 +59,7 @@ export const ExerciseDetails: React.FC<{ exercise: Exercise, onBack: () => void 
         // This is heavy for client-side without refined indexing or denormalization.
         // For 1RM chart, we need Date + Weight + Reps.
 
-        // Let's optimize: map sets to workouts
-        // Needs proper 'repository' method. MVP: Just load all workouts.
+
         const workouts = await db.workouts.toArray();
         const workoutMap = new Map(workouts.map(w => [w.uuid, w.startedAt]));
         const weMap = new Map(wes.map(we => [we.uuid, we.workoutId]));
@@ -74,10 +74,11 @@ export const ExerciseDetails: React.FC<{ exercise: Exercise, onBack: () => void 
     // Calculate Epley 1RM
     const epley = (w: number, r: number) => w * (1 + r / 30);
 
-    const oneRMData = history?.map(s => epley(s.weight, s.reps)) || [];
-    // Smoothed or per-workout max? Charting every set is noisy.
-
-    // Group by workout (date) and take max 1RM
+    const oneRMData = history?.map(s => {
+        const w = safeNum(s.weight);
+        const r = safeNum(s.reps);
+        return epley(w, r);
+    }).filter(v => !isNaN(v) && isFinite(v)) || [];
 
 
     return (
