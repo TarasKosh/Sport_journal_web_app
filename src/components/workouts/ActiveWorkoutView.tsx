@@ -54,8 +54,8 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
     const exercisesRef = useRef(exercises);
     useEffect(() => { exercisesRef.current = exercises; }, [exercises]);
 
-    const confirmDiscardTimerRef = useRef<ReturnType<typeof setTimeout>>();
-    const confirmDeleteTimerRef = useRef<ReturnType<typeof setTimeout>>();
+    const confirmDiscardTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+    const confirmDeleteTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
     useEffect(() => {
         return () => {

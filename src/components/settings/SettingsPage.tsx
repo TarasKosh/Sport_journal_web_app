@@ -41,7 +41,7 @@ export const SettingsPage: React.FC = () => {
                         <select
                             className="bg-bg-tertiary border border-transparent rounded px-2 py-1"
                             value={settings.massUnit}
-                            onChange={(e) => updateSetting('massUnit', e.target.value)}
+                            onChange={(e) => updateSetting('massUnit', e.target.value as MassUnit)}
                         >
                             <option value={MassUnit.KG}>Kilograms (kg)</option>
                             <option value={MassUnit.LB}>Pounds (lb)</option>
@@ -53,7 +53,7 @@ export const SettingsPage: React.FC = () => {
                         <select
                             className="bg-bg-tertiary border border-transparent rounded px-2 py-1"
                             value={settings.theme}
-                            onChange={(e) => updateSetting('theme', e.target.value)}
+                            onChange={(e) => updateSetting('theme', e.target.value as Settings['theme'])}
                         >
                             <option value="system">System</option>
                             <option value="dark">Dark</option>
