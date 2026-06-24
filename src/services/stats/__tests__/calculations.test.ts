@@ -10,6 +10,7 @@ import {
   calculatePRs,
 } from '../calculations';
 import type { Workout, WorkoutExercise, Exercise, SetEntry } from '../../../types';
+import type { StatsPeriod } from '../types';
 
 function makeWorkout(overrides: Partial<{
   uuid: string;
@@ -107,7 +108,7 @@ describe('filterWorkoutsByPeriod', () => {
     const workouts = [
       makeWorkout({ uuid: 'w1', startedAt: now - 86400000 * 100 }),
     ];
-    expect(filterWorkoutsByPeriod(workouts, 'unknown')).toEqual(workouts);
+    expect(filterWorkoutsByPeriod(workouts, 'unknown' as StatsPeriod)).toEqual(workouts);
   });
 
   it('filters workouts within the last week', () => {
@@ -386,8 +387,8 @@ describe('calculateWorkoutsOverTime', () => {
 
     const result = calculateWorkoutsOverTime([w1, w2]);
     // week of June 1 should come before week of June 15
-    const date0 = new Date(result[0].week.split('-').map(Number)).getTime();
-    const date1 = new Date(result[1].week.split('-').map(Number)).getTime();
+    const date0 = new Date(result[0].week).getTime();
+    const date1 = new Date(result[1].week).getTime();
     expect(date0).toBeLessThan(date1);
   });
 
@@ -490,8 +491,8 @@ describe('calculateTonnageOverTime', () => {
     ];
 
     const result = calculateTonnageOverTime(sets, workoutExercises, workouts);
-    const date0 = new Date(result[0].week.split('-').map(Number)).getTime();
-    const date1 = new Date(result[1].week.split('-').map(Number)).getTime();
+    const date0 = new Date(result[0].week).getTime();
+    const date1 = new Date(result[1].week).getTime();
     expect(date0).toBeLessThan(date1);
   });
 });
@@ -680,8 +681,8 @@ describe('calculateMuscleDistributionOverTime', () => {
     ];
 
     const result = calculateMuscleDistributionOverTime(sets, workoutExercises, workouts, exercises);
-    const date0 = new Date(result[0].week.split('-').map(Number)).getTime();
-    const date1 = new Date(result[1].week.split('-').map(Number)).getTime();
+    const date0 = new Date(result[0].week).getTime();
+    const date1 = new Date(result[1].week).getTime();
     expect(date0).toBeLessThan(date1);
   });
 });

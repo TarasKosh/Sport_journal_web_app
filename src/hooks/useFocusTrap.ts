@@ -34,6 +34,8 @@ export function useFocusTrap(
         function onKeyDown(e: KeyboardEvent) {
             if (e.key !== 'Tab') return;
             if (trapIdRef.current !== activeTrapCount) return;
+            const container = containerRef.current;
+            if (!container) return;
             const els = getFocusable(container);
             if (!els.length) return;
             const first = els[0];
