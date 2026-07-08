@@ -6,6 +6,8 @@ import { Calendar, Edit2, Trash2, Dumbbell } from 'lucide-react';
 import type { Workout } from '../../types';
 import { workoutDayToDate } from '../../utils/dateUtils';
 import { safeNum } from '../../utils';
+import { useSettings } from '../../hooks/useSettings';
+import { kgToDisplay, massUnitLabel } from '../../utils/mass';
 
 interface WorkoutCardProps {
   workout: Workout;
@@ -19,15 +21,19 @@ interface WorkoutCardProps {
  * Shows quick metrics: duration, exercise count, total tonnage
  */
 export const WorkoutCard: React.FC<WorkoutCardProps> = React.memo(({ workout, onEdit, onDelete, onClick }) => {
+  const settings = useSettings();
+  const unitLabel = massUnitLabel(settings.massUnit).toLowerCase();
   // Load exercises count and calculate tonnage
   const workoutExercises = useLiveQuery(async () => {
-    return await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray();
+    return (await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray())
+      .filter(we => we.deletedAt == null);
   }, [workout.uuid]);
 
   const allSets = useLiveQuery(async () => {
     if (!workoutExercises || workoutExercises.length === 0) return [];
     const workoutExerciseUuids = workoutExercises.map(we => we.uuid);
-    return await db.sets.where('workoutExerciseId').anyOf(workoutExerciseUuids).toArray();
+    return (await db.sets.where('workoutExerciseId').anyOf(workoutExerciseUuids).toArray())
+      .filter(s => s.deletedAt == null);
   }, [workoutExercises]);
 
   // Calculate quick metrics
@@ -67,6 +73,7 @@ export const WorkoutCard: React.FC<WorkoutCardProps> = React.memo(({ workout, on
           <button
             className="text-accent hover:text-accent-hover transition"
             title="Edit workout"
+            aria-label="Edit workout"
             onClick={(e) => {
               e.stopPropagation();
               onEdit(workout);
@@ -77,6 +84,7 @@ export const WorkoutCard: React.FC<WorkoutCardProps> = React.memo(({ workout, on
           <button
             className="text-danger hover:text-danger/80 transition"
             title="Delete workout"
+            aria-label="Delete workout"
             onClick={(e) => {
               e.stopPropagation();
               onDelete(workout);
@@ -102,7 +110,9 @@ export const WorkoutCard: React.FC<WorkoutCardProps> = React.memo(({ workout, on
         </div>
         {metrics.tonnage > 0 && (
           <div className="text-text-secondary">
-            <span className="font-semibold text-accent">{metrics.tonnage} kg</span>
+            <span className="font-semibold text-accent">
+              {kgToDisplay(metrics.tonnage, settings.massUnit)} {unitLabel}
+            </span>
             <span className="text-text-tertiary ml-1">tonnage</span>
           </div>
         )}

@@ -5,6 +5,7 @@ import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { ModalShell } from '../common/ModalShell';
 import { v4 as uuidv4 } from 'uuid';
+import { useToast } from '../../hooks/useToast';
 
 interface EditExerciseModalProps {
     isOpen: boolean;
@@ -13,6 +14,7 @@ interface EditExerciseModalProps {
 }
 
 export const EditExerciseModal: React.FC<EditExerciseModalProps> = ({ isOpen, onClose, exercise }) => {
+    const { showToast } = useToast();
     const [name, setName] = useState(exercise?.name || '');
     const [muscle, setMuscle] = useState<MuscleGroup>(exercise?.muscleGroup || 'other');
 
@@ -45,7 +47,7 @@ export const EditExerciseModal: React.FC<EditExerciseModalProps> = ({ isOpen, on
             onClose();
         } catch (e) {
             console.error("Failed to save exercise", e);
-            alert("Error saving exercise");
+            showToast('Error saving exercise', 'error');
         }
     };
 

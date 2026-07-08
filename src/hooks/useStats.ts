@@ -17,16 +17,21 @@ import {
 export function useStats(period: StatsPeriod): StatsData | null {
     return useLiveQuery<StatsData | null>(async () => {
         return await (async () => {
-            const workouts = await db.workouts.toArray();
+            // Include soft-deleted exercises for FK resolution (muscle group / names on historical sets)
+            const workouts = (await db.workouts.toArray()).filter(w => w.deletedAt == null);
             const exercises = await db.exercises.toArray();
 
             const completedWorkouts = workouts.filter(w => !!w.endedAt);
             const filteredWorkouts = filterWorkoutsByPeriod(completedWorkouts, period);
 
             const workoutIds = filteredWorkouts.map(w => w.uuid);
-            const workoutExercises = await db.workoutExercises.where('workoutId').anyOf(workoutIds).toArray();
+            const workoutExercises = (await db.workoutExercises.where('workoutId').anyOf(workoutIds).toArray())
+                .filter(we => we.deletedAt == null);
             const workoutExerciseIds = workoutExercises.map(we => we.uuid);
-            const filteredSets = await db.sets.where('workoutExerciseId').anyOf(workoutExerciseIds).toArray();
+            const filteredSets = workoutExerciseIds.length === 0
+                ? []
+                : (await db.sets.where('workoutExerciseId').anyOf(workoutExerciseIds).toArray())
+                    .filter(s => s.deletedAt == null);
 
             const totalWorkouts = filteredWorkouts.length;
             const totalSets = filteredSets.length;

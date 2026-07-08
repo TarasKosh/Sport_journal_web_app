@@ -7,34 +7,57 @@ import { v4 as uuidv4 } from 'uuid';
 import { ActiveWorkoutView } from './ActiveWorkoutView';
 import { WorkoutDayPickerModal } from './WorkoutDayPickerModal';
 import { toDayString, workoutDayToDate } from '../../utils/dateUtils';
+import { softDeleteWorkout } from '../../services/data/softDelete';
+import { useSettings } from '../../hooks/useSettings';
+import { displayToKg, kgToDisplay, massUnitLabel } from '../../utils/mass';
+import type { MassUnit } from '../../types';
 
 export const WorkoutPage: React.FC = () => {
+    const settings = useSettings();
     const [finishedWorkoutUuid, setFinishedWorkoutUuid] = useState<string | null>(null);
     const [selectedWorkoutDay, setSelectedWorkoutDay] = useState<string>(() => toDayString(new Date()));
     const [isDayPickerOpen, setIsDayPickerOpen] = useState(false);
     const [draftWorkoutDay, setDraftWorkoutDay] = useState<string>(selectedWorkoutDay);
 
-    // Fetch the most recent finished workout to prefill body weight
-    const lastBodyWeight = useLiveQuery(async () => {
+    // Last body weight stored in kg
+    const lastBodyWeightKg = useLiveQuery(async () => {
         const workouts = await db.workouts
-            .filter(w => !!w.endedAt && w.bodyWeight != null)
+            .filter(w => !!w.endedAt && w.bodyWeight != null && w.deletedAt == null)
             .sortBy('startedAt');
         return workouts.length > 0 ? workouts[workouts.length - 1].bodyWeight ?? null : null;
     });
 
-    // Pre-workout inputs (on start screen)
-    // Prefill body weight once when the value is available and field is empty
-    // (state-during-render pattern)
+    // Pre-workout inputs (on start screen) — display unit from settings.
+    // Track the last auto-prefill so massUnit / lastBodyWeightKg changes re-convert
+    // without clobbering user edits.
     const [startBodyWeight, setStartBodyWeight] = useState<string>('');
-    if (lastBodyWeight != null && startBodyWeight === '') {
-        setStartBodyWeight(String(lastBodyWeight));
+    const [lastPrefill, setLastPrefill] = useState<{
+        kg: number;
+        unit: MassUnit;
+        display: string;
+    } | null>(null);
+
+    if (lastBodyWeightKg != null) {
+        const stillMatchesPrefill =
+            startBodyWeight === '' ||
+            (lastPrefill != null && startBodyWeight === lastPrefill.display);
+        const needsUpdate =
+            lastPrefill == null ||
+            lastPrefill.kg !== lastBodyWeightKg ||
+            lastPrefill.unit !== settings.massUnit;
+
+        if (stillMatchesPrefill && needsUpdate) {
+            const display = String(kgToDisplay(lastBodyWeightKg, settings.massUnit));
+            setLastPrefill({ kg: lastBodyWeightKg, unit: settings.massUnit, display });
+            setStartBodyWeight(display);
+        }
     }
 
     // Query for an active workout (endedAt is undefined or null)
     // Query for active workouts (should be 0 or 1)
     const activeWorkouts = useLiveQuery(async () => {
         return await db.workouts
-            .filter(w => !w.endedAt)
+            .filter(w => !w.endedAt && w.deletedAt == null)
             .toArray();
     });
 
@@ -58,7 +81,7 @@ export const WorkoutPage: React.FC = () => {
         return await db.workouts
             .where('workoutDay')
             .equals(selectedWorkoutDay)
-            .filter(w => !!w.endedAt)
+            .filter(w => !!w.endedAt && w.deletedAt == null)
             .toArray();
     }, [selectedWorkoutDay]);
 
@@ -71,8 +94,10 @@ export const WorkoutPage: React.FC = () => {
                 uuid: uuidv4(),
                 startedAt: now,
                 workoutDay,
-                // Save body weight at the start so it's available during the workout
-                bodyWeight: startBodyWeight ? parseFloat(startBodyWeight) : undefined,
+                // Store body weight in kg
+                bodyWeight: startBodyWeight
+                    ? displayToKg(parseFloat(startBodyWeight), settings.massUnit)
+                    : undefined,
                 updatedAt: now
             });
         } catch (e) {
@@ -95,8 +120,10 @@ export const WorkoutPage: React.FC = () => {
             setFinishedWorkoutUuid(null);
             return;
         }
-        if (confirm('Delete this workout? This cannot be undone.')) {
-            await db.workouts.delete(finishedWorkout.id!);
+        if (confirm('Delete this workout? It will be removed on this device and after the next sync.')) {
+            if (finishedWorkout.id != null) {
+                await softDeleteWorkout(finishedWorkout.id);
+            }
             setFinishedWorkoutUuid(null);
         }
     };
@@ -187,7 +214,7 @@ export const WorkoutPage: React.FC = () => {
 
             {/* Body weight input before starting */}
             <div className="w-full max-w-xs">
-                <label className="block text-xs font-bold text-text-tertiary mb-1.5 uppercase tracking-wide text-left">Body Weight (kg)</label>
+                <label className="block text-xs font-bold text-text-tertiary mb-1.5 uppercase tracking-wide text-left">Body Weight ({massUnitLabel(settings.massUnit).toLowerCase()})</label>
                 <div className="flex items-center gap-2">
                     <button
                         type="button"

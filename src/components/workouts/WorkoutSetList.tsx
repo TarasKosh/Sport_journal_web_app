@@ -36,7 +36,8 @@ export const SetList: React.FC<SetListProps> = React.memo(({
     const variations = React.useMemo(() => exercise?.variations || [], [exercise?.variations]);
 
     const sets = useLiveQuery(async () => {
-        const s = await db.sets.where('workoutExerciseId').equals(workoutExercise.uuid).toArray();
+        const s = (await db.sets.where('workoutExerciseId').equals(workoutExercise.uuid).toArray())
+            .filter(set => set.deletedAt == null);
         return s.sort((a, b) => a.order - b.order);
     }, [workoutExercise.uuid]);
 
@@ -50,38 +51,28 @@ export const SetList: React.FC<SetListProps> = React.memo(({
             defaultWeight = lastSet.weight;
             defaultReps = lastSet.reps;
         } else {
-            // First set: determine default weight
+            // First set: last historical working weight for this exercise (not body mass)
             try {
-                // Priority 1: body weight entered at workout start
-                const currentWorkout = await db.workouts
-                    .where('uuid')
-                    .equals(workoutExercise.workoutId)
-                    .first();
-                if (currentWorkout?.bodyWeight) {
-                    defaultWeight = currentWorkout.bodyWeight;
-                }
+                const pastWorkoutExercises = (await db.workoutExercises
+                    .where('exerciseId')
+                    .equals(workoutExercise.exerciseId)
+                    .toArray())
+                    .filter(we => we.deletedAt == null);
 
-                // Priority 2 (fallback): last historical weight for this exercise
-                if (defaultWeight === 0) {
-                    const pastWorkoutExercises = await db.workoutExercises
-                        .where('exerciseId')
-                        .equals(workoutExercise.exerciseId)
-                        .toArray();
+                const pastIds = pastWorkoutExercises
+                    .filter(we => we.uuid !== workoutExercise.uuid)
+                    .map(we => we.uuid);
 
-                    const pastIds = pastWorkoutExercises
-                        .filter(we => we.uuid !== workoutExercise.uuid)
-                        .map(we => we.uuid);
+                if (pastIds.length > 0) {
+                    const pastSets = (await db.sets
+                        .where('workoutExerciseId')
+                        .anyOf(pastIds)
+                        .toArray())
+                        .filter(s => s.deletedAt == null);
 
-                    if (pastIds.length > 0) {
-                        const pastSets = await db.sets
-                            .where('workoutExerciseId')
-                            .anyOf(pastIds)
-                            .toArray();
-
-                        if (pastSets.length > 0) {
-                            pastSets.sort((a, b) => b.updatedAt - a.updatedAt);
-                            defaultWeight = pastSets[0].weight;
-                        }
+                    if (pastSets.length > 0) {
+                        pastSets.sort((a, b) => b.updatedAt - a.updatedAt);
+                        defaultWeight = pastSets[0].weight;
                     }
                 }
             } catch (error) {

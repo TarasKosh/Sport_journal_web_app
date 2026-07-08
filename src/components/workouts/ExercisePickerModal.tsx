@@ -28,26 +28,25 @@ export const ExercisePickerModal: React.FC<ExercisePickerModalProps> = ({ isOpen
     const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup | 'all'>('all');
 
     const exercises = useLiveQuery(async () => {
-        const all = await db.exercises.orderBy('name').toArray();
-        let filtered = all;
-        
+        let filtered = (await db.exercises.orderBy('name').toArray()).filter(e => e.deletedAt == null);
+
         if (search) {
             const lower = search.toLowerCase();
-            filtered = filtered.filter(e => 
-                e.name.toLowerCase().includes(lower) || 
+            filtered = filtered.filter(e =>
+                e.name.toLowerCase().includes(lower) ||
                 e.muscleGroup.includes(lower)
             );
         }
-        
+
         if (selectedMuscleGroup !== 'all') {
             filtered = filtered.filter(e => e.muscleGroup === selectedMuscleGroup);
         }
-        
+
         return filtered;
     }, [search, selectedMuscleGroup]);
 
     const muscleGroups = useLiveQuery(async () => {
-        const all = await db.exercises.toArray();
+        const all = (await db.exercises.toArray()).filter(e => e.deletedAt == null);
         const groups = new Set(all.map(e => e.muscleGroup));
         return Array.from(groups).sort();
     });

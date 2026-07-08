@@ -147,7 +147,10 @@ export function calculateTonnageOverTime(
         });
 }
 
-/** Calculate body weight data points (one per workout) */
+/**
+ * Calculate body weight data points (one per workout).
+ * bodyWeight is stored in kg; upper bound uses kg scale (~500 kg is absurd enough).
+ */
 export function calculateBodyWeightOverTime(workouts: Workout[]): { week: string; weight: number }[] {
     return workouts
         .filter(w => w.startedAt && w.bodyWeight && w.bodyWeight > 0 && w.bodyWeight < 500)

@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import type { SetEntry } from '../../types';
+import { RPEType } from '../../types';
 import { db } from '../../db/db';
 import { Trash2, CornerDownRight, Minus, Plus } from 'lucide-react';
 import clsx from 'clsx';
 import { useDebounce } from '../../hooks/useDebounce';
+import { softDeleteSet } from '../../services/data/softDelete';
+import { useSettings } from '../../hooks/useSettings';
+import { displayToKg, kgToDisplay, massUnitLabel } from '../../utils/mass';
 
 interface SetItemProps {
     entry: SetEntry;
@@ -72,9 +76,17 @@ const InputWithButtons = ({
 );
 
 export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUnilateral, variations, onAddVariation }) => {
-    const [weight, setWeight] = useState(entry.weight.toString());
+    const settings = useSettings();
+    const massUnit = settings.massUnit;
+    const weightStep = settings.weightStep || 2.5;
+    const rpeType = settings.defaultRPEType || RPEType.RPE;
+    const useRir = rpeType === RPEType.RIR;
+
+    const [weight, setWeight] = useState(() => kgToDisplay(entry.weight, massUnit).toString());
     const [reps, setReps] = useState(entry.reps.toString());
-    const [rpe, setRpe] = useState(entry.rpe?.toString() || '');
+    const [rpe, setRpe] = useState(
+        useRir ? (entry.rir?.toString() || '') : (entry.rpe?.toString() || ''),
+    );
     const [variation, setVariation] = useState(entry.variation || '');
     const [side, setSide] = useState<'left' | 'right' | undefined>(entry.side);
     const [isFailure, setIsFailure] = useState(entry.isFailure);
@@ -87,27 +99,49 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
         setVariation(entry.variation || '');
     }
 
+    // Sync display weight when unit or stored weight changes
+    const [prevWeightKey, setPrevWeightKey] = useState(`${entry.weight}|${massUnit}`);
+    const weightKey = `${entry.weight}|${massUnit}`;
+    if (weightKey !== prevWeightKey) {
+        setPrevWeightKey(weightKey);
+        setWeight(kgToDisplay(entry.weight, massUnit).toString());
+    }
+
+    // Resync intensity field when RPE/RIR preference or stored values change
+    const intensityKey = `${useRir}|${entry.rpe ?? ''}|${entry.rir ?? ''}`;
+    const [prevIntensityKey, setPrevIntensityKey] = useState(intensityKey);
+    if (intensityKey !== prevIntensityKey) {
+        setPrevIntensityKey(intensityKey);
+        setRpe(useRir ? (entry.rir?.toString() || '') : (entry.rpe?.toString() || ''));
+    }
+
     const debouncedWeight = useDebounce(weight, 500);
     const debouncedReps = useDebounce(reps, 500);
     const debouncedRpe = useDebounce(rpe, 500);
     const debouncedFailureRep = useDebounce(failureRep, 500);
 
     useEffect(() => {
-        if (Number(debouncedWeight) === entry.weight &&
+        const weightKg = displayToKg(Number(debouncedWeight) || 0, massUnit);
+        const intensity = debouncedRpe === '' ? undefined : Number(debouncedRpe);
+        const storedIntensity = useRir ? entry.rir : entry.rpe;
+
+        if (weightKg === entry.weight &&
             Number(debouncedReps) === entry.reps &&
-            (debouncedRpe === '' ? undefined : Number(debouncedRpe)) === entry.rpe &&
+            intensity === storedIntensity &&
             (isFailure ? Number(debouncedFailureRep) : undefined) === entry.failureRep) {
             return;
         }
 
         db.sets.update(entry.id!, {
-            weight: Number(debouncedWeight),
+            weight: weightKg,
             reps: Number(debouncedReps),
-            rpe: debouncedRpe ? Number(debouncedRpe) : undefined,
+            ...(useRir
+                ? { rir: intensity, rpe: entry.rpe }
+                : { rpe: intensity, rir: entry.rir }),
             failureRep: isFailure ? Number(debouncedFailureRep) : undefined,
             updatedAt: Date.now()
         }).catch(console.error);
-    }, [debouncedWeight, debouncedReps, debouncedRpe, debouncedFailureRep, isFailure, entry.id, entry.weight, entry.reps, entry.rpe, entry.failureRep]);
+    }, [debouncedWeight, debouncedReps, debouncedRpe, debouncedFailureRep, isFailure, entry.id, entry.weight, entry.reps, entry.rpe, entry.rir, entry.failureRep, massUnit, useRir]);
 
     const toggleFailure = () => {
         const newVal = !isFailure;
@@ -123,7 +157,14 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
     };
 
     const handleDelete = async () => {
-        await db.sets.delete(entry.id!);
+        if (entry.id != null) {
+            await softDeleteSet(entry.id);
+        }
+    };
+
+    const stepWeight = (delta: number) => {
+        const current = Number(weight) || 0;
+        setWeight(String(Math.max(0, Math.round((current + delta) * 100) / 100)));
     };
 
     const activeRowClass = isFailure ? "rounded border-l-4 border-l-danger" : "hover:bg-bg-secondary/30 rounded border-l-4 border-l-transparent";
@@ -248,14 +289,15 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
 
             {/* Input Fields - Responsive Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {/* KG */}
                 <div>
-                    <div className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider mb-1 text-center">KG</div>
+                    <div className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider mb-1 text-center">
+                        {massUnitLabel(massUnit)}
+                    </div>
                     <InputWithButtons
                         value={weight}
                         onChange={setWeight}
-                        onIncrement={() => setWeight((Number(weight) + 2.5).toString())}
-                        onDecrement={() => setWeight(Math.max(0, Number(weight) - 2.5).toString())}
+                        onIncrement={() => stepWeight(weightStep)}
+                        onDecrement={() => stepWeight(-weightStep)}
                     />
                 </div>
 
@@ -271,14 +313,16 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
                     />
                 </div>
 
-                {/* RPE */}
+                {/* RPE / RIR */}
                 <div>
-                    <div className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider mb-1 text-center">RPE</div>
+                    <div className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider mb-1 text-center">
+                        {useRir ? 'RIR' : 'RPE'}
+                    </div>
                     <InputWithButtons
                         value={rpe}
                         onChange={setRpe}
-                        onIncrement={() => setRpe(rpe ? Math.min(10, Number(rpe) + 0.5).toString() : '10')}
-                        onDecrement={() => setRpe(rpe ? Math.max(0, Number(rpe) - 0.5).toString() : '10')}
+                        onIncrement={() => setRpe(rpe ? Math.min(10, Number(rpe) + 0.5).toString() : useRir ? '2' : '8')}
+                        onDecrement={() => setRpe(rpe ? Math.max(0, Number(rpe) - 0.5).toString() : useRir ? '2' : '8')}
                         placeholder="-"
                     />
                 </div>

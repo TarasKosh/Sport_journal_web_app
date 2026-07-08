@@ -9,8 +9,12 @@ import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { EditWorkoutTemplateModal } from './EditWorkoutTemplateModal';
+import { softDeleteWorkoutTemplate } from '../../services/data/softDelete';
+import { onlyActive } from '../../utils/entityFilters';
+import { useToast } from '../../hooks/useToast';
 
 export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ createTrigger = 0 }) => {
+    const { showToast } = useToast();
     const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<WorkoutTemplate | undefined>(undefined);
@@ -25,8 +29,7 @@ export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ crea
     }, [createTrigger]);
 
     const templates = useLiveQuery(async () => {
-        const all = await db.workoutTemplates.orderBy('name').toArray();
-        return all;
+        return onlyActive(await db.workoutTemplates.orderBy('name').toArray());
     }, []);
 
     const filtered = useMemo(() => {
@@ -98,8 +101,11 @@ export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ crea
                             <button
                                 onClick={async (e) => {
                                     e.stopPropagation();
-                                    if (confirm(`Delete "${t.name}"? This cannot be undone.`)) {
-                                        await db.workoutTemplates.delete(t.id!);
+                                    if (confirm(`Delete "${t.name}"? It will be hidden after the next sync.`)) {
+                                        if (t.id != null) {
+                                            await softDeleteWorkoutTemplate(t.id);
+                                            showToast('Template deleted', 'success');
+                                        }
                                     }
                                 }}
                                 className="text-text-tertiary hover:text-danger transition-colors opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-danger/10"

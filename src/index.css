@@ -40,6 +40,25 @@
   --animate-spin: spin 1s linear infinite;
 }
 
+/* ── Dark theme tokens ── */
+html.dark {
+  --color-bg-primary: #0f1419;
+  --color-bg-secondary: #1a2332;
+  --color-bg-tertiary: #243044;
+
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-tertiary: #64748b;
+
+  --color-border: #334155;
+
+  color-scheme: dark;
+}
+
+html:not(.dark) {
+  color-scheme: light;
+}
+
 /* ── Base styles ── */
 body {
   font-family: var(--font-sans);

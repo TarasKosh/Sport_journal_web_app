@@ -5,19 +5,22 @@ import { EditWorkoutModal } from '../workouts/EditWorkoutModal';
 import { WorkoutDetailsView } from './WorkoutDetailsView';
 import { WorkoutCard } from './WorkoutCard';
 import type { Workout } from '../../types';
+import { softDeleteWorkout } from '../../services/data/softDelete';
+import { useToast } from '../../hooks/useToast';
 
 export const HistoryList: React.FC = () => {
+    const { showToast } = useToast();
     const [editingWorkout, setEditingWorkout] = React.useState<Workout | null>(null);
     const [selectedWorkout, setSelectedWorkout] = React.useState<Workout | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const scrollPositionRef = useRef<number>(0);
 
-    // Fetch completed workouts descending
+    // Fetch completed workouts descending (exclude soft-deleted)
     const workouts = useLiveQuery(async () => {
         return await db.workouts
             .orderBy('workoutDay')
             .reverse()
-            .filter(w => !!w.endedAt)
+            .filter(w => !!w.endedAt && w.deletedAt == null)
             .toArray();
     });
 
@@ -62,34 +65,16 @@ export const HistoryList: React.FC = () => {
     const handleDeleteWorkout = useCallback(async (workout: Workout) => {
         if (!workout.id) return;
 
-        if (confirm('Delete this workout? This cannot be undone.')) {
+        if (confirm('Delete this workout? It will be removed on this device and after the next sync.')) {
             try {
-                const workoutExercises = await db.workoutExercises
-                    .where('workoutId')
-                    .equals(workout.uuid)
-                    .toArray();
-
-                for (const we of workoutExercises) {
-                    const sets = await db.sets
-                        .where('workoutExerciseId')
-                        .equals(we.uuid)
-                        .toArray();
-                    if (sets.length > 0) {
-                        await db.sets.bulkDelete(sets.map(s => s.id!));
-                    }
-                }
-
-                if (workoutExercises.length > 0) {
-                    await db.workoutExercises.bulkDelete(workoutExercises.map(we => we.id!));
-                }
-
-                await db.workouts.delete(workout.id);
+                await softDeleteWorkout(workout.id);
+                showToast('Workout deleted', 'success');
             } catch (e) {
                 console.error('Failed to delete workout', e);
-                alert('Failed to delete workout. Please try again.');
+                showToast('Failed to delete workout. Please try again.', 'error');
             }
         }
-    }, []);
+    }, [showToast]);
 
     if (!workouts) return <div className="p-4 text-center">Loading...</div>;
 

@@ -5,10 +5,12 @@ import { SyncManager } from '../../services/sync/SyncManager';
 import { FileSyncProvider } from '../../services/sync/FileProvider';
 import { GoogleDriveSyncProvider } from '../../services/sync/GoogleDriveProvider';
 import { Upload, Download, RefreshCw, Cloud } from 'lucide-react';
+import { useToast } from '../../hooks/useToast';
 
 export const SyncPage: React.FC = () => {
     const [status, setStatus] = useState<string>('');
     const [isSyncing, setIsSyncing] = useState(false);
+    const { showToast } = useToast();
 
     const handleFileExport = async () => {
         try {
@@ -17,9 +19,11 @@ export const SyncPage: React.FC = () => {
             const snapshot = await manager.createSnapshot();
             await provider.push(snapshot);
             setStatus('Export successful');
+            showToast('Export successful', 'success');
         } catch (e) {
             console.error(e);
             setStatus('Export failed');
+            showToast('Export failed', 'error');
         }
     };
 
@@ -33,12 +37,14 @@ export const SyncPage: React.FC = () => {
             const snapshot = await provider.importFile(file);
             await manager.mergeSnapshot(snapshot);
             setStatus('Import and Merge successful');
-            alert('Data imported successfully!');
-            // Reload to reflect changes? Or relies on live query. Live query handles it.
+            showToast('Data imported successfully', 'success');
         } catch (e) {
             console.error(e);
-            setStatus('Import failed');
-            alert('Import failed (check console)');
+            const message = e instanceof Error ? e.message : 'Import failed';
+            setStatus(`Import failed: ${message}`);
+            showToast(message, 'error');
+        } finally {
+            e.target.value = '';
         }
     };
 
@@ -51,10 +57,12 @@ export const SyncPage: React.FC = () => {
             const manager = new SyncManager(provider);
             await manager.sync();
             setStatus('Google Drive Sync Complete');
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } catch (e: any) {
+            showToast('Google Drive sync complete', 'success');
+        } catch (e: unknown) {
             console.error(e);
-            setStatus('Sync Failed: ' + (e.message || String(e)));
+            const message = e instanceof Error ? e.message : String(e);
+            setStatus('Sync Failed: ' + message);
+            showToast('Sync failed: ' + message, 'error');
         } finally {
             setIsSyncing(false);
         }
@@ -75,7 +83,7 @@ export const SyncPage: React.FC = () => {
                     {isSyncing ? <RefreshCw className="animate-spin mr-2" /> : <RefreshCw className="mr-2" />}
                     Sync Now
                 </Button>
-                {status && <p className="text-xs text-center text-text-tertiary">{status}</p>}
+                {status && <p className="text-xs text-center text-text-tertiary" role="status">{status}</p>}
             </Card>
 
             <Card className="flex flex-col gap-4">
@@ -92,12 +100,13 @@ export const SyncPage: React.FC = () => {
                     </Button>
                     <input
                         type="file"
-                        accept=".json"
+                        accept=".json,application/json"
                         onChange={handleFileImport}
                         className="absolute inset-0 opacity-0 cursor-pointer"
+                        aria-label="Import JSON file"
                     />
                 </div>
-                <p className="text-xs text-text-secondary text-center">Importing will merge with existing data.</p>
+                <p className="text-xs text-text-secondary text-center">Importing will merge with existing data (last write wins).</p>
             </Card>
         </div>
     );

@@ -12,6 +12,8 @@ import {
     formatNumber,
 } from './charts';
 import type { StatsPeriod } from '../../services/stats';
+import { useSettings } from '../../hooks/useSettings';
+import { kgToDisplay, massUnitLabel } from '../../utils/mass';
 
 const PERIODS: { value: StatsPeriod; label: string }[] = [
     { value: 'week', label: 'Week' },
@@ -27,6 +29,15 @@ const MUSCLE_DETAIL_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5c
 export const StatsPage: React.FC = () => {
     const [period, setPeriod] = useState<StatsPeriod>('3months');
     const stats = useStats(period);
+    const settings = useSettings();
+    const unitLabel = massUnitLabel(settings.massUnit).toLowerCase();
+
+    const muscleDistributionOverTimeDisplay = (stats?.muscleDistributionOverTime || []).map((p) => ({
+        ...p,
+        muscles: Object.fromEntries(
+            Object.entries(p.muscles).map(([k, v]) => [k, kgToDisplay(v, settings.massUnit)])
+        ),
+    }));
 
     return (
         <div className="p-4 flex flex-col gap-4">
@@ -68,8 +79,8 @@ export const StatsPage: React.FC = () => {
                     </Card>
                     <Card className="flex flex-col items-center justify-center py-4">
                         <BarChart2 className="text-success mb-1" size={20} />
-                        <span className="text-lg font-bold">{formatNumber(stats.totalTonnage)}</span>
-                        <span className="text-xs text-text-secondary text-center">Total Tonnage (kg)</span>
+                        <span className="text-lg font-bold">{formatNumber(kgToDisplay(stats.totalTonnage, settings.massUnit))}</span>
+                        <span className="text-xs text-text-secondary text-center">Total Tonnage ({unitLabel})</span>
                     </Card>
                     <Card className="flex flex-col items-center justify-center py-4">
                         <Calendar className="text-info mb-1" size={20} />
@@ -111,29 +122,46 @@ export const StatsPage: React.FC = () => {
             <Card>
                 <div className="flex items-center gap-2 mb-4">
                     <TrendingUp className="text-success" size={20} />
-                    <h2 className="font-bold">Body Weight Over Time (kg)</h2>
+                    <h2 className="font-bold">Body Weight Over Time ({unitLabel})</h2>
                 </div>
-                <WeightLineChart data={stats?.bodyWeightOverTime || []} />
+                <WeightLineChart
+                    data={(stats?.bodyWeightOverTime || []).map((p) => ({
+                        ...p,
+                        weight: kgToDisplay(p.weight, settings.massUnit),
+                    }))}
+                />
             </Card>
 
             <Card>
-                <h2 className="font-bold mb-4">Tonnage Over Time</h2>
-                <LineChart data={stats?.tonnageOverTime || []} />
+                <h2 className="font-bold mb-4">Tonnage Over Time ({unitLabel})</h2>
+                <LineChart
+                    data={(stats?.tonnageOverTime || []).map((p) => ({
+                        ...p,
+                        tonnage: kgToDisplay(p.tonnage, settings.massUnit),
+                    }))}
+                />
             </Card>
 
             <Card>
-                <h2 className="font-bold mb-4">Muscle Distribution Over Time (Stacked)</h2>
-                <StackedAreaChart data={stats?.muscleDistributionOverTime || []} />
+                <h2 className="font-bold mb-4">Muscle Distribution Over Time (Stacked) ({unitLabel})</h2>
+                <StackedAreaChart data={muscleDistributionOverTimeDisplay} />
             </Card>
 
             <Card>
-                <h2 className="font-bold mb-4">Muscle Volume Trends</h2>
-                <MultiLineChart data={stats?.muscleDistributionOverTime || []} />
+                <h2 className="font-bold mb-4">Muscle Volume Trends ({unitLabel})</h2>
+                <MultiLineChart data={muscleDistributionOverTimeDisplay} />
             </Card>
 
             <Card>
-                <h2 className="font-bold mb-4">Muscle Distribution</h2>
-                <PieChart data={stats?.muscleDistribution.map(item => ({ name: item.name, volume: item.volume })) || []} />
+                <h2 className="font-bold mb-4">Muscle Distribution ({unitLabel})</h2>
+                <PieChart
+                    data={
+                        stats?.muscleDistribution.map((item) => ({
+                            name: item.name,
+                            volume: kgToDisplay(item.volume, settings.massUnit),
+                        })) || []
+                    }
+                />
 
                 <div className="mt-4 space-y-3 max-h-60 overflow-y-auto">
                     {stats?.muscleDistribution.slice(0, 6).map((item, index) => (
@@ -144,13 +172,17 @@ export const StatsPage: React.FC = () => {
                                     style={{ backgroundColor: MUSCLE_DETAIL_COLORS[index % MUSCLE_DETAIL_COLORS.length] }}
                                 />
                                 <span className="font-medium capitalize">{item.name}</span>
-                                <span className="text-sm text-text-secondary ml-auto">{formatNumber(item.volume)}</span>
+                                <span className="text-sm text-text-secondary ml-auto">
+                                    {formatNumber(kgToDisplay(item.volume, settings.massUnit))}
+                                </span>
                             </div>
                             <div className="space-y-1 ml-5">
                                 {item.topExercises.map((exercise, exIndex) => (
                                     <div key={exIndex} className="flex justify-between text-sm">
                                         <span className="text-text-secondary truncate">{exercise.name}</span>
-                                        <span className="ml-2">{formatNumber(exercise.volume)}</span>
+                                        <span className="ml-2">
+                                            {formatNumber(kgToDisplay(exercise.volume, settings.massUnit))}
+                                        </span>
                                     </div>
                                 ))}
                             </div>
