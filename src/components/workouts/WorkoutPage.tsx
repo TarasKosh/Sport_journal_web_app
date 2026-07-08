@@ -188,13 +188,13 @@ export const WorkoutPage: React.FC = () => {
     }
 
     return (
-        <div className="flex flex-col items-center justify-center h-full p-6 text-center space-y-6">
+        <div className="flex flex-col items-center justify-center h-full w-full min-w-0 p-4 sm:p-6 text-center space-y-6 overflow-x-hidden">
             <div className="bg-bg-tertiary p-8 rounded-full">
                 <Play size={48} className="text-accent ml-2" />
             </div>
-            <div>
+            <div className="w-full max-w-sm min-w-0 px-1">
                 {workoutsForSelectedDay && workoutsForSelectedDay.length > 0 && (
-                    <div className="w-full max-w-md pt-2">
+                    <div className="pt-2">
                         <p className="text-text-secondary">You have already logged workouts for this day.</p>
                     </div>
                 )}
@@ -206,53 +206,56 @@ export const WorkoutPage: React.FC = () => {
                     setDraftWorkoutDay(selectedWorkoutDay);
                     setIsDayPickerOpen(true);
                 }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-bg-secondary border border-border hover:bg-bg-tertiary transition-colors"
+                className="flex items-center gap-2 max-w-full px-4 py-2 rounded-xl bg-bg-secondary border border-border hover:bg-bg-tertiary transition-colors"
             >
-                <Calendar size={18} className="text-text-secondary" />
-                <span className="font-medium">{workoutDayToDate(selectedWorkoutDay).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                <Calendar size={18} className="text-text-secondary shrink-0" />
+                <span className="font-medium truncate">{workoutDayToDate(selectedWorkoutDay).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</span>
             </button>
 
-            {/* Body weight input before starting */}
-            <div className="w-full max-w-xs">
+            {/* Body weight input before starting — min-w-0 so number input can shrink on narrow screens */}
+            <div className="w-full max-w-sm min-w-0">
                 <label className="block text-xs font-bold text-text-tertiary mb-1.5 uppercase tracking-wide text-left">Body Weight ({massUnitLabel(settings.massUnit).toLowerCase()})</label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 w-full min-w-0">
                     <button
                         type="button"
+                        aria-label="Decrease body weight"
                         onClick={() => setStartBodyWeight(prev => {
                             const val = parseFloat(prev);
                             if (isNaN(val)) return prev;
                             return String(Math.max(0, +(val - 0.5).toFixed(1)));
                         })}
                         disabled={!startBodyWeight}
-                        className="h-12 w-12 shrink-0 rounded-xl bg-bg-secondary border border-border/60 flex items-center justify-center text-text-primary hover:bg-bg-tertiary active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="h-11 w-11 sm:h-12 sm:w-12 shrink-0 rounded-xl bg-bg-secondary border border-border/60 flex items-center justify-center text-text-primary hover:bg-bg-tertiary active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                         <Minus size={20} />
                     </button>
                     <input
                         type="number"
+                        inputMode="decimal"
                         step="0.1"
                         min="0"
-                        className="flex-1 px-4 py-3 rounded-xl bg-bg-secondary border border-border/60 focus:border-accent outline-none text-text-primary font-medium text-center text-lg"
+                        className="min-w-0 flex-1 w-0 px-2 sm:px-4 py-3 rounded-xl bg-bg-secondary border border-border/60 focus:border-accent outline-none text-text-primary font-medium text-center text-lg"
                         placeholder="e.g. 75.5"
                         value={startBodyWeight}
                         onChange={e => setStartBodyWeight(e.target.value)}
                     />
                     <button
                         type="button"
+                        aria-label="Increase body weight"
                         onClick={() => setStartBodyWeight(prev => {
                             const val = parseFloat(prev);
                             if (isNaN(val)) return prev;
                             return String(+(val + 0.5).toFixed(1));
                         })}
                         disabled={!startBodyWeight}
-                        className="h-12 w-12 shrink-0 rounded-xl bg-bg-secondary border border-border/60 flex items-center justify-center text-text-primary hover:bg-bg-tertiary active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="h-11 w-11 sm:h-12 sm:w-12 shrink-0 rounded-xl bg-bg-secondary border border-border/60 flex items-center justify-center text-text-primary hover:bg-bg-tertiary active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                         <Plus size={20} />
                     </button>
                 </div>
             </div>
 
-            <Button size="lg" onClick={handleStartWorkout} fullWidth className="max-w-xs shadow-lg shadow-accent/20">
+            <Button size="lg" onClick={handleStartWorkout} fullWidth className="max-w-sm shadow-lg shadow-accent/20">
                 Start
             </Button>
             <WorkoutDayPickerModal
