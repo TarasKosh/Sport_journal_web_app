@@ -8,6 +8,8 @@ import { Card } from '../common/Card';
 import { EditWorkoutModal } from '../workouts/EditWorkoutModal';
 import { workoutDayToDate } from '../../utils/dateUtils';
 import { safeNum } from '../../utils';
+import { useSettings } from '../../hooks/useSettings';
+import { kgToDisplay, massUnitLabel } from '../../utils/mass';
 
 interface WorkoutDetailsViewProps {
   workout: Workout;
@@ -21,12 +23,15 @@ interface WorkoutDetailsViewProps {
  * - Summary statistics (total exercises, sets, tonnage)
  */
 export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout, onBack }) => {
+  const settings = useSettings();
+  const unitLabel = massUnitLabel(settings.massUnit).toLowerCase();
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
 
   // Load exercises for this workout
   const workoutExercises = useLiveQuery(async () => {
-    const list = await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray();
+    const list = (await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray())
+      .filter(we => we.deletedAt == null);
     return list.sort((a, b) => a.order - b.order);
   }, [workout.uuid]);
 
@@ -38,6 +43,7 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
   }, [workoutExercises]);
 
   // Batch-load exercises to avoid N+1 queries
+  // Include soft-deleted exercises so history still resolves exercise names
   const allExercises = useLiveQuery(() => db.exercises.toArray(), []);
   const exerciseMap = useMemo(() => {
     const map = new Map<string, Exercise>();
@@ -51,8 +57,9 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
     const workoutExerciseUuids = workoutExercises.map(we => we.uuid);
     return await db.sets.where('workoutExerciseId').anyOf(workoutExerciseUuids).toArray()
       .then(sets => {
+        const active = sets.filter(s => s.deletedAt == null);
         const exerciseOrder = Object.fromEntries(workoutExercises.map((we, i) => [we.uuid, i]));
-        return sets.sort((a, b) => {
+        return active.sort((a, b) => {
           const orderA = exerciseOrder[a.workoutExerciseId] ?? 999;
           const orderB = exerciseOrder[b.workoutExerciseId] ?? 999;
           return orderA !== orderB ? orderA - orderB : a.order - b.order;
@@ -170,10 +177,12 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
               <span className="text-white font-medium">{getMoodEmoji(workout.mood)} {workout.mood}</span>
             </div>
           )}
-          {workout.bodyWeight && (
+          {workout.bodyWeight != null && (
             <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">
               <Scale size={16} className="text-white/90" />
-              <span className="text-white font-medium">{workout.bodyWeight} kg</span>
+              <span className="text-white font-medium">
+                {kgToDisplay(workout.bodyWeight, settings.massUnit)} {unitLabel}
+              </span>
             </div>
           )}
         </div>
@@ -201,8 +210,14 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
               <div className="text-3xl font-bold text-text-primary">{summary.totalReps || '—'}</div>
             </div>
             <div className="bg-bg-primary/50 p-3 rounded-lg border border-border/50">
-              <div className="text-xs text-text-tertiary uppercase font-bold tracking-wider mb-2">Tonnage (kg)</div>
-              <div className="text-3xl font-bold text-accent">{summary.totalTonnage || '—'}</div>
+              <div className="text-xs text-text-tertiary uppercase font-bold tracking-wider mb-2">
+                Tonnage ({unitLabel})
+              </div>
+              <div className="text-3xl font-bold text-accent">
+                {summary.totalTonnage
+                  ? kgToDisplay(summary.totalTonnage, settings.massUnit)
+                  : '—'}
+              </div>
             </div>
           </div>
         </Card>
@@ -267,13 +282,11 @@ interface ExerciseCardProps {
 }
 
 const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, workoutExercise, sets, isExpanded, onToggle }) => {
-  if (!exercise) {
-    return (
-      <Card className="p-4">
-        <div className="animate-pulse">Loading exercise...</div>
-      </Card>
-    );
-  }
+  const settings = useSettings();
+  const unitLabel = massUnitLabel(settings.massUnit).toLowerCase();
+  const displayName = exercise
+    ? `${exercise.name}${exercise.deletedAt != null ? ' (deleted)' : ''}`
+    : 'Unknown exercise';
 
   return (
     <Card className="overflow-hidden p-0">
@@ -287,11 +300,13 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, workoutExercise, 
             <Dumbbell size={22} className="text-accent" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-lg text-text-primary truncate mb-1">{exercise.name}</h3>
+            <h3 className="font-bold text-lg text-text-primary truncate mb-1">{displayName}</h3>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-semibold text-text-secondary bg-bg-tertiary px-2 py-0.5 rounded capitalize">
-                {exercise.muscleGroup?.replace('_', ' ')}
-              </span>
+              {exercise?.muscleGroup && (
+                <span className="text-xs font-semibold text-text-secondary bg-bg-tertiary px-2 py-0.5 rounded capitalize">
+                  {exercise.muscleGroup.replace('_', ' ')}
+                </span>
+              )}
               <span className="text-xs text-text-tertiary font-medium">{sets.length} sets</span>
               {workoutExercise.notes && (
                 <span className="text-xs text-text-tertiary italic">"{workoutExercise.notes}"</span>
@@ -319,7 +334,7 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, workoutExercise, 
                 <thead>
                   <tr className="border-b-2 border-border text-text-tertiary text-xs uppercase font-bold tracking-wider">
                     <th className="text-left py-3 px-3">#</th>
-                    <th className="text-right py-3 px-3">Weight</th>
+                    <th className="text-right py-3 px-3">Weight ({unitLabel})</th>
                     <th className="text-right py-3 px-3">Reps</th>
                     <th className="text-right py-3 px-3">RPE</th>
                     {sets.some(s => s.variation) && <th className="text-left py-3 px-3">Variation</th>}
@@ -337,7 +352,9 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, workoutExercise, 
                       }`}
                     >
                       <td className="py-3 px-3 font-bold text-text-primary">{index + 1}</td>
-                      <td className="py-3 px-3 text-right font-semibold text-text-primary">{set.weight || '—'}</td>
+                      <td className="py-3 px-3 text-right font-semibold text-text-primary">
+                        {set.weight != null ? kgToDisplay(set.weight, settings.massUnit) : '—'}
+                      </td>
                       <td className={`py-3 px-3 text-right font-semibold ${set.isFailure ? 'text-danger' : 'text-text-primary'}`}>
                         {set.reps || '—'}
                         {set.isFailure && set.failureRep && (

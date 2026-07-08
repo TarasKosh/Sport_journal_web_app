@@ -11,7 +11,9 @@ interface TemplatePickerModalProps {
 }
 
 export const TemplatePickerModal: React.FC<TemplatePickerModalProps> = ({ isOpen, onClose, onSelect }) => {
-    const templates = useLiveQuery(() => db.workoutTemplates.toArray());
+    const templates = useLiveQuery(async () =>
+        (await db.workoutTemplates.toArray()).filter(t => t.deletedAt == null),
+    );
 
     return (
         <ModalShell

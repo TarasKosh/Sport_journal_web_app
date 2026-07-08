@@ -9,6 +9,8 @@ import { ExercisePickerModal } from './ExercisePickerModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { v4 as uuidv4 } from 'uuid';
 import { SetList } from './WorkoutSetList';
+import { softDeleteWorkout, softDeleteWorkoutExerciseAndReorder } from '../../services/data/softDelete';
+import { onlyActive } from '../../utils/entityFilters';
 
 const WorkoutTimer: React.FC<{ startedAt: number }> = React.memo(({ startedAt }) => {
     const [duration, setDuration] = useState(() => Date.now() - startedAt);
@@ -40,10 +42,11 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
     const [confirmDeleteExerciseId, setConfirmDeleteExerciseId] = useState<number | null>(null);
 
     const exercises = useLiveQuery(async () => {
-        const list = await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray();
+        const list = onlyActive(await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray());
         return list.sort((a, b) => a.order - b.order);
     }, [workout.uuid]);
 
+    // Include soft-deleted exercises so in-session rows still resolve names after library delete
     const allExercises = useLiveQuery(() => db.exercises.toArray(), []);
     const exerciseMap = useMemo(() => {
         const map = new Map<string, Exercise>();
@@ -66,12 +69,14 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
 
     const handleAddExercise = useCallback(async (exerciseId: string) => {
         try {
-            const count = await db.workoutExercises.where('workoutId').equals(workout.uuid).count();
+            const active = onlyActive(
+                await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray(),
+            );
             await db.workoutExercises.add({
                 uuid: uuidv4(),
                 workoutId: workout.uuid,
                 exerciseId,
-                order: count,
+                order: active.length,
                 updatedAt: Date.now()
             });
             setIsPickerOpen(false);
@@ -83,11 +88,13 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
     const handleAddTemplate = useCallback(async (templateId: string) => {
         try {
             const template = await db.workoutTemplates.where('uuid').equals(templateId).first();
-            if (!template) return;
+            if (!template || template.deletedAt != null) return;
 
-            const count = await db.workoutExercises.where('workoutId').equals(workout.uuid).count();
+            const active = onlyActive(
+                await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray(),
+            );
+            const count = active.length;
 
-            // Add all exercises from template
             for (let i = 0; i < template.exercises.length; i++) {
                 await db.workoutExercises.add({
                     uuid: uuidv4(),
@@ -119,7 +126,9 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
             confirmDiscardTimerRef.current = setTimeout(() => setConfirmDiscard(false), 3000);
             return;
         }
-        await db.workouts.delete(workout.id!);
+        if (workout.id != null) {
+            await softDeleteWorkout(workout.id);
+        }
         onDiscarded?.(workout.uuid);
     }, [workout.id, workout.uuid, onDiscarded, confirmDiscard]);
 
@@ -131,25 +140,9 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
             return;
         }
 
-        const currentExercises = exercisesRef.current;
-        const we = currentExercises?.find(e => e.id === workoutExerciseId);
-        if (!we) return;
-
-        const now = Date.now();
-        // Delete all sets for this exercise
-        const sets = await db.sets.where('workoutExerciseId').equals(we.uuid).toArray();
-        await db.sets.bulkDelete(sets.map(s => s.id!));
-        // Delete the workout exercise
-        await db.workoutExercises.delete(workoutExerciseId);
-        // Reorder remaining exercises
-        if (currentExercises) {
-            const remaining = currentExercises.filter(e => e.id !== workoutExerciseId);
-            for (let i = 0; i < remaining.length; i++) {
-                await db.workoutExercises.update(remaining[i].id!, { order: i, updatedAt: now });
-            }
-        }
+        await softDeleteWorkoutExerciseAndReorder(workoutExerciseId, workout.uuid);
         setConfirmDeleteExerciseId(null);
-    }, [confirmDeleteExerciseId]);
+    }, [confirmDeleteExerciseId, workout.uuid]);
 
     const moveExercise = useCallback(async (index: number, direction: 'up' | 'down') => {
         const currentExercises = exercisesRef.current;

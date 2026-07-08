@@ -3,14 +3,30 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db/db';
 import type { ConflictLog, Settings } from '../../types';
 import type { SyncSnapshot, SyncProvider } from './types';
-
-const SCHEMA_VERSION = 3;
+import { SCHEMA_VERSION, validateSnapshot } from './validateSnapshot';
 
 type TimestampedSyncRecord = {
     id?: number;
     uuid: string;
     updatedAt: number;
+    deletedAt?: number;
 };
+
+/** True when payloads differ in a way that is meaningful beyond timestamps alone being unequal. */
+function hasMeaningfulDivergence(
+    local: Record<string, unknown>,
+    remote: Record<string, unknown>,
+): boolean {
+    const ignore = new Set(['id', 'updatedAt']);
+    const keys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+    for (const key of keys) {
+        if (ignore.has(key)) continue;
+        if (JSON.stringify(local[key]) !== JSON.stringify(remote[key])) {
+            return true;
+        }
+    }
+    return false;
+}
 
 export class SyncManager {
     private provider: SyncProvider;
@@ -47,19 +63,41 @@ export class SyncManager {
         };
     }
 
-    async mergeSnapshot(remote: SyncSnapshot): Promise<void> {
-        if (remote.schemaVersion !== SCHEMA_VERSION) {
-            throw new Error(`Schema version mismatch. Local: ${SCHEMA_VERSION}, Remote: ${remote.schemaVersion}`);
-        }
+    async mergeSnapshot(remote: SyncSnapshot | unknown): Promise<void> {
+        const snapshot = validateSnapshot(remote, SCHEMA_VERSION);
 
-        await db.transaction('rw', [db.settings, db.exercises, db.workouts, db.workoutExercises, db.sets, db.workoutTemplates, db.conflictLog], async () => {
-            await this.mergeSettings(remote.data.settings || []);
-            await this.mergeTable(db.exercises, remote.data.exercises);
-            await this.mergeTable(db.workouts, remote.data.workouts);
-            await this.mergeTable(db.workoutExercises, remote.data.workoutExercises);
-            await this.mergeTable(db.sets, remote.data.sets);
-            await this.mergeTable(db.workoutTemplates, remote.data.workoutTemplates || []);
-            await this.mergeConflictLog(remote.data.conflictLog || []);
+        await db.transaction(
+            'rw',
+            [db.settings, db.exercises, db.workouts, db.workoutExercises, db.sets, db.workoutTemplates, db.conflictLog],
+            async () => {
+                await this.mergeSettings(snapshot.data.settings || []);
+                await this.mergeTable(db.exercises, snapshot.data.exercises, 'exercise');
+                await this.mergeTable(db.workouts, snapshot.data.workouts, 'workout');
+                await this.mergeTable(db.workoutExercises, snapshot.data.workoutExercises, 'workout_exercise');
+                await this.mergeTable(db.sets, snapshot.data.sets, 'set');
+                await this.mergeTable(db.workoutTemplates, snapshot.data.workoutTemplates || [], 'workout_template');
+                await this.mergeConflictLog(snapshot.data.conflictLog || []);
+            },
+        );
+    }
+
+    private async logConflict(
+        entityType: ConflictLog['entityType'],
+        entityId: string,
+        localUpdatedAt: number,
+        remoteUpdatedAt: number,
+        snapshot: Record<string, unknown>,
+        resolution: 'remote' | 'local',
+    ): Promise<void> {
+        await db.conflictLog.add({
+            uuid: uuidv4(),
+            entityType,
+            entityId,
+            localUpdatedAt,
+            remoteUpdatedAt,
+            resolvedAt: Date.now(),
+            resolution,
+            snapshot,
         });
     }
 
@@ -70,22 +108,74 @@ export class SyncManager {
         }
 
         const local = await db.settings.toCollection().first();
-        await db.settings.put({
-            ...remote,
-            id: local?.id ?? remote.id ?? 1,
-        });
+        const localUpdated = local?.updatedAt ?? 0;
+        const remoteUpdated = remote.updatedAt ?? 0;
+
+        if (!local) {
+            await db.settings.add({
+                ...remote,
+                updatedAt: remoteUpdated || Date.now(),
+            });
+            return;
+        }
+
+        if (remoteUpdated > localUpdated) {
+            if (
+                localUpdated > 0 &&
+                hasMeaningfulDivergence(
+                    local as unknown as Record<string, unknown>,
+                    remote as unknown as Record<string, unknown>,
+                )
+            ) {
+                await this.logConflict(
+                    'settings',
+                    'settings',
+                    localUpdated,
+                    remoteUpdated,
+                    { local, remote } as unknown as Record<string, unknown>,
+                    'remote',
+                );
+            }
+            await db.settings.put({
+                ...remote,
+                id: local.id ?? remote.id ?? 1,
+                updatedAt: remoteUpdated,
+            });
+        }
+        // else keep local (including equal timestamps)
     }
 
-    private async mergeTable<T extends TimestampedSyncRecord>(table: Table<T, number>, remoteRecords: T[]): Promise<void> {
+    private async mergeTable<T extends TimestampedSyncRecord>(
+        table: Table<T, number>,
+        remoteRecords: T[],
+        entityType: ConflictLog['entityType'],
+    ): Promise<void> {
         for (const remote of remoteRecords) {
             const local = await table.where('uuid').equals(remote.uuid).first();
 
             if (!local) {
-                await table.add(remote);
+                const { id: _remoteId, ...rest } = remote as T & { id?: number };
+                void _remoteId;
+                await table.add(rest as T);
                 continue;
             }
 
             if (remote.updatedAt > local.updatedAt) {
+                if (
+                    hasMeaningfulDivergence(
+                        local as unknown as Record<string, unknown>,
+                        remote as unknown as Record<string, unknown>,
+                    )
+                ) {
+                    await this.logConflict(
+                        entityType,
+                        remote.uuid,
+                        local.updatedAt,
+                        remote.updatedAt,
+                        { local, remote } as unknown as Record<string, unknown>,
+                        'remote',
+                    );
+                }
                 await table.put({
                     ...remote,
                     id: local.id,
@@ -99,7 +189,9 @@ export class SyncManager {
             const local = await db.conflictLog.where('uuid').equals(remote.uuid).first();
 
             if (!local) {
-                await db.conflictLog.add(remote);
+                const { id: _remoteId, ...rest } = remote;
+                void _remoteId;
+                await db.conflictLog.add(rest as ConflictLog);
                 continue;
             }
 
@@ -111,7 +203,7 @@ export class SyncManager {
     }
 
     async sync(): Promise<void> {
-        if (!await this.provider.isAuthenticated()) {
+        if (!(await this.provider.isAuthenticated())) {
             await this.provider.connect();
         }
 

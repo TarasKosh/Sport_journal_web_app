@@ -1,4 +1,5 @@
 import type { SyncProvider, SyncSnapshot } from './types';
+import { validateSnapshot } from './validateSnapshot';
 
 const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const GOOGLE_GIS_SCRIPT_SRC = 'https://accounts.google.com/gsi/client';
@@ -217,7 +218,8 @@ export class GoogleDriveSyncProvider implements SyncProvider {
         }
 
         const response = await this.driveRequest(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
-        return await response.json() as SyncSnapshot;
+        const raw = await response.json() as unknown;
+        return validateSnapshot(raw);
     }
 
     async push(snapshot: SyncSnapshot): Promise<void> {

@@ -2,27 +2,30 @@ import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { Card } from '../common/Card';
-import { MassUnit, type Settings } from '../../types';
+import { MassUnit, RPEType, type Settings } from '../../types';
 import { SyncPage } from '../sync/SyncPage';
 import { usePWA } from '../../hooks/usePWA';
 import { Download, CheckCircle2 } from 'lucide-react';
+import { useToast } from '../../hooks/useToast';
 
 export const SettingsPage: React.FC = () => {
-    // We assume ID 1 for settings. Or first record.
     const settings = useLiveQuery(() => db.settings.toCollection().first());
     const { isInstallable, isInstalled, installApp } = usePWA();
+    const { showToast } = useToast();
 
     type SettingsKey = Exclude<keyof Settings, 'id'>;
     const updateSetting = async <K extends SettingsKey>(key: K, value: Settings[K]) => {
+        const now = Date.now();
         if (settings) {
-            await db.settings.update(settings.id!, { [key]: value });
+            await db.settings.update(settings.id!, { [key]: value, updatedAt: now });
         } else {
             await db.settings.add({
-                massUnit: 'kg',
+                massUnit: MassUnit.KG,
                 weightStep: 2.5,
-                defaultRPEType: 'rpe',
+                defaultRPEType: RPEType.RPE,
                 theme: 'system',
                 language: 'en',
+                updatedAt: now,
                 [key]: value,
             } as Settings);
         }
@@ -36,9 +39,10 @@ export const SettingsPage: React.FC = () => {
 
             <Card>
                 <div className="flex flex-col gap-4">
-                    <div className="flex justify-between items-center">
-                        <label className="font-medium">Mass Unit</label>
+                    <div className="flex justify-between items-center gap-3">
+                        <label className="font-medium" htmlFor="settings-mass-unit">Mass Unit</label>
                         <select
+                            id="settings-mass-unit"
                             className="bg-bg-tertiary border border-transparent rounded px-2 py-1"
                             value={settings.massUnit}
                             onChange={(e) => updateSetting('massUnit', e.target.value as MassUnit)}
@@ -48,9 +52,38 @@ export const SettingsPage: React.FC = () => {
                         </select>
                     </div>
 
-                    <div className="flex justify-between items-center">
-                        <label className="font-medium">Theme</label>
+                    <div className="flex justify-between items-center gap-3">
+                        <label className="font-medium" htmlFor="settings-weight-step">Weight Step</label>
                         <select
+                            id="settings-weight-step"
+                            className="bg-bg-tertiary border border-transparent rounded px-2 py-1"
+                            value={settings.weightStep}
+                            onChange={(e) => updateSetting('weightStep', Number(e.target.value))}
+                        >
+                            <option value={0.5}>0.5</option>
+                            <option value={1}>1</option>
+                            <option value={2.5}>2.5</option>
+                            <option value={5}>5</option>
+                        </select>
+                    </div>
+
+                    <div className="flex justify-between items-center gap-3">
+                        <label className="font-medium" htmlFor="settings-rpe-type">Intensity Scale</label>
+                        <select
+                            id="settings-rpe-type"
+                            className="bg-bg-tertiary border border-transparent rounded px-2 py-1"
+                            value={settings.defaultRPEType}
+                            onChange={(e) => updateSetting('defaultRPEType', e.target.value as RPEType)}
+                        >
+                            <option value={RPEType.RPE}>RPE (1–10)</option>
+                            <option value={RPEType.RIR}>RIR (reps in reserve)</option>
+                        </select>
+                    </div>
+
+                    <div className="flex justify-between items-center gap-3">
+                        <label className="font-medium" htmlFor="settings-theme">Theme</label>
+                        <select
+                            id="settings-theme"
                             className="bg-bg-tertiary border border-transparent rounded px-2 py-1"
                             value={settings.theme}
                             onChange={(e) => updateSetting('theme', e.target.value as Settings['theme'])}
@@ -69,17 +102,24 @@ export const SettingsPage: React.FC = () => {
                 <h3 className="text-sm font-bold text-danger mb-2">Danger Zone</h3>
                 <button
                     onClick={async () => {
-                        if (confirm('Are you sure you want to delete ALL data? This cannot be undone!')) {
-                            await db.delete();
-                            window.location.reload();
+                        if (!confirm('Are you sure you want to delete ALL data? This cannot be undone!')) {
+                            return;
                         }
+                        const typed = window.prompt('Type DELETE to confirm full database reset:');
+                        if (typed !== 'DELETE') {
+                            showToast('Reset cancelled', 'info');
+                            return;
+                        }
+                        await db.delete();
+                        showToast('Database reset', 'info');
+                        window.location.reload();
                     }}
                     className="w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 active:bg-red-800 transition-colors shadow-md flex items-center justify-center gap-2"
                 >
                     🗑️ Reset Database
                 </button>
                 <p className="text-xs text-text-secondary mt-2">
-                    This will delete all workouts, exercises, and settings. The database will be recreated with default exercises.
+                    This will delete all workouts, exercises, and settings. Requires typing DELETE. The database will be recreated with default exercises.
                 </p>
             </Card>
 

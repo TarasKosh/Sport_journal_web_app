@@ -33,7 +33,7 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
     useFocusTrap(isOpen, containerRef);
 
     const exercises = useLiveQuery(async () => {
-        const all = await db.exercises.orderBy('name').toArray();
+        const all = (await db.exercises.orderBy('name').toArray()).filter(e => e.deletedAt == null);
         if (!search) return all;
         const lower = search.toLowerCase();
         return all.filter(e => e.name.toLowerCase().includes(lower) || e.muscleGroup.includes(lower));

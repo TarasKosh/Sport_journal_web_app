@@ -10,8 +10,12 @@ import { Plus, Search, Tag, Trash2 } from 'lucide-react';
 import { EditExerciseModal } from './EditExerciseModal';
 import { ExerciseDetails } from './ExerciseDetails';
 import { WorkoutTemplateList } from './WorkoutTemplateList';
+import { softDeleteExercise } from '../../services/data/softDelete';
+import { onlyActive } from '../../utils/entityFilters';
+import { useToast } from '../../hooks/useToast';
 
 export const ExerciseList: React.FC = () => {
+    const { showToast } = useToast();
     const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingExercise, setEditingExercise] = useState<Exercise | undefined>(undefined);
@@ -20,7 +24,7 @@ export const ExerciseList: React.FC = () => {
     const [templateCreateTrigger, setTemplateCreateTrigger] = useState(0);
 
     const exercises = useLiveQuery(async () => {
-        const all = await db.exercises.orderBy('name').toArray();
+        const all = onlyActive(await db.exercises.orderBy('name').toArray());
         if (!search) return all;
         const lower = search.toLowerCase();
         return all.filter(e => e.name.toLowerCase().includes(lower) || e.muscleGroup.includes(lower));
@@ -88,19 +92,32 @@ export const ExerciseList: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Delete Button */}
-                                <button
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        if (confirm(`Delete "${ex.name}"? This cannot be undone.`)) {
-                                            await db.exercises.delete(ex.id!);
-                                        }
-                                    }}
-                                    className="text-text-tertiary hover:text-danger transition-colors opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-danger/10"
-                                    title="Delete exercise"
-                                >
-                                    <Trash2 size={20} />
-                                </button>
+                                {/* Delete only for custom exercises; always visible for touch */}
+                                {ex.isCustom && (
+                                    <button
+                                        onClick={async (e) => {
+                                            e.stopPropagation();
+                                            if (confirm(`Delete "${ex.name}"? It will be hidden after the next sync.`)) {
+                                                try {
+                                                    if (ex.id != null) {
+                                                        await softDeleteExercise(ex.id);
+                                                        showToast('Exercise deleted', 'success');
+                                                    }
+                                                } catch (err) {
+                                                    showToast(
+                                                        err instanceof Error ? err.message : 'Delete failed',
+                                                        'error',
+                                                    );
+                                                }
+                                            }
+                                        }}
+                                        className="text-text-tertiary hover:text-danger transition-colors opacity-70 sm:opacity-100 p-2 rounded-lg hover:bg-danger/10"
+                                        title="Delete exercise"
+                                        aria-label={`Delete ${ex.name}`}
+                                    >
+                                        <Trash2 size={20} />
+                                    </button>
+                                )}
                             </Card>
                         ))}
                     </div>

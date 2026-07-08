@@ -5,7 +5,8 @@ import type { Exercise } from '../../types';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { EditExerciseModal } from './EditExerciseModal';
-import { safeNum } from '../../utils';
+import { safeNum, kgToDisplay, massUnitLabel } from '../../utils';
+import { useSettings } from '../../hooks/useSettings';
 import { ArrowLeft, Edit2 } from 'lucide-react';
 
 // Simple SVG Chart Component
@@ -43,6 +44,8 @@ const SimpleLineChart = ({ data, label }: { data: number[], label: string }) => 
 
 export const ExerciseDetails: React.FC<{ exercise: Exercise, onBack: () => void }> = ({ exercise, onBack }) => {
     const [isEditOpen, setIsEditOpen] = useState(false);
+    const settings = useSettings();
+    const unitLabel = massUnitLabel(settings.massUnit).toLowerCase();
 
     // Fetch history for stats
     const history = useLiveQuery(async () => {
@@ -50,17 +53,15 @@ export const ExerciseDetails: React.FC<{ exercise: Exercise, onBack: () => void 
         // Use compound index or join. For MVP, filter sets.
         // Assuming we look up by workoutExercise... complex query.
         // Simplified: Fetch all WorkoutExercises for this exercise, then fetch their sets.
-        const wes = await db.workoutExercises.where('exerciseId').equals(exercise.uuid).toArray();
+        const wes = (await db.workoutExercises.where('exerciseId').equals(exercise.uuid).toArray())
+            .filter(we => we.deletedAt == null);
         const weIds = wes.map(we => we.uuid);
-        const sets = await db.sets.where('workoutExerciseId').anyOf(weIds).toArray();
+        const sets = weIds.length === 0
+            ? []
+            : (await db.sets.where('workoutExerciseId').anyOf(weIds).toArray())
+                .filter(s => s.deletedAt == null);
 
-        // Sort sets by time? Sets don't have timestamp, Workouts do.
-        // Need to join Workout to get date.
-        // This is heavy for client-side without refined indexing or denormalization.
-        // For 1RM chart, we need Date + Weight + Reps.
-
-
-        const workouts = await db.workouts.toArray();
+        const workouts = (await db.workouts.toArray()).filter(w => w.deletedAt == null);
         const workoutMap = new Map(workouts.map(w => [w.uuid, w.startedAt]));
         const weMap = new Map(wes.map(we => [we.uuid, we.workoutId]));
 
@@ -71,15 +72,14 @@ export const ExerciseDetails: React.FC<{ exercise: Exercise, onBack: () => void 
         }).sort((a, b) => a.date - b.date);
     }, [exercise.uuid]);
 
-    // Calculate Epley 1RM
+    // Calculate Epley 1RM in kg, then convert for display
     const epley = (w: number, r: number) => w * (1 + r / 30);
 
     const oneRMData = history?.map(s => {
         const w = safeNum(s.weight);
         const r = safeNum(s.reps);
-        return epley(w, r);
+        return kgToDisplay(epley(w, r), settings.massUnit);
     }).filter(v => !isNaN(v) && isFinite(v)) || [];
-
 
     return (
         <div className="flex flex-col h-full overflow-y-auto p-4 bg-bg-primary">
@@ -94,7 +94,7 @@ export const ExerciseDetails: React.FC<{ exercise: Exercise, onBack: () => void 
                     <h2 className="font-bold mb-2">Progress</h2>
                     {history && history.length > 0 ? (
                         <div className="flex flex-col gap-4">
-                            <SimpleLineChart data={oneRMData.slice(-20)} label="Est. 1RM (Last 20 Sets)" />
+                            <SimpleLineChart data={oneRMData.slice(-20)} label={`Est. 1RM (${unitLabel}, Last 20 Sets)`} />
                             {/* <SimpleLineChart data={volumeData.slice(-20)} label="Volume" /> */}
                         </div>
                     ) : (
@@ -108,7 +108,9 @@ export const ExerciseDetails: React.FC<{ exercise: Exercise, onBack: () => void 
                         {history?.slice(-5).reverse().map(s => (
                             <div key={s.uuid} className="flex justify-between text-sm border-b border-border pb-1">
                                 <span>{new Date(s.date).toLocaleDateString()}</span>
-                                <span className="font-mono">{s.weight}kg x {s.reps}</span>
+                                <span className="font-mono">
+                                    {kgToDisplay(safeNum(s.weight), settings.massUnit)} {unitLabel} x {s.reps}
+                                </span>
                             </div>
                         ))}
                     </div>

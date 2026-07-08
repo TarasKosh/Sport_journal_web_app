@@ -24,6 +24,8 @@ export interface Settings {
     defaultRPEType: RPEType;
     theme: 'dark' | 'light' | 'system';
     language: string;
+    /** Sync meta — LWW for settings singleton */
+    updatedAt?: number;
 }
 
 export interface Exercise {
@@ -101,7 +103,7 @@ export interface SetEntry {
 export interface ConflictLog {
     id?: number;
     uuid: UUID;
-    entityType: 'workout' | 'exercise' | 'set' | 'workout_exercise' | 'settings';
+    entityType: 'workout' | 'exercise' | 'set' | 'workout_exercise' | 'workout_template' | 'settings';
     entityId: UUID;
     localUpdatedAt: number;
     remoteUpdatedAt: number;

@@ -1,4 +1,5 @@
 import type { SyncProvider, SyncSnapshot } from './types';
+import { validateSnapshot } from './validateSnapshot';
 
 export class FileSyncProvider implements SyncProvider {
     name = "File Export/Import";
@@ -9,7 +10,6 @@ export class FileSyncProvider implements SyncProvider {
 
     async pull(): Promise<SyncSnapshot | null> {
         // File provider 'pull' is triggered via UI file picker, not automatically.
-        // So this might return null or throw saying "Use importFile method".
         return null;
     }
 
@@ -26,6 +26,12 @@ export class FileSyncProvider implements SyncProvider {
     // Helper for UI to call when file is selected
     async importFile(file: File): Promise<SyncSnapshot> {
         const text = await file.text();
-        return JSON.parse(text) as SyncSnapshot;
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(text);
+        } catch {
+            throw new Error('Invalid JSON file.');
+        }
+        return validateSnapshot(parsed);
     }
 }

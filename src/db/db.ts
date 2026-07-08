@@ -108,7 +108,8 @@ export class AppDatabase extends Dexie {
             weightStep: 2.5,
             defaultRPEType: RPEType.RPE,
             theme: 'system',
-            language: 'en' // or ru
+            language: 'en', // or ru
+            updatedAt: Date.now(),
         });
 
         // Default Exercises
