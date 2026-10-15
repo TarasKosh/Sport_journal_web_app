@@ -28,8 +28,20 @@ describe('validateSnapshot', () => {
     expect(() => validateSnapshot('x')).toThrow(/root must be an object/);
   });
 
-  it('rejects schema version mismatch', () => {
+  it('rejects a snapshot from a newer app version', () => {
     expect(() => validateSnapshot({ ...validSnapshot, schemaVersion: 99 })).toThrow(/Schema version mismatch/);
+  });
+
+  it('rejects a snapshot without a usable schemaVersion', () => {
+    expect(() => validateSnapshot({ ...validSnapshot, schemaVersion: 'three' })).toThrow(/Schema version mismatch/);
+    expect(() => validateSnapshot({ ...validSnapshot, schemaVersion: undefined })).toThrow(/Schema version mismatch/);
+  });
+
+  it('accepts older additive versions instead of hard-failing the sync', () => {
+    // Additive changes keep the same schema number; older-but-supported versions are read as-is.
+    const result = validateSnapshot({ ...validSnapshot, schemaVersion: 1 });
+    expect(result.schemaVersion).toBe(3);
+    expect(result.deviceId).toBe('device-1');
   });
 
   it('rejects missing deviceId', () => {
@@ -98,6 +110,18 @@ describe('validateSnapshot', () => {
     ).toThrow(/deletedAt/);
   });
 
+  it('rejects a set without a parent workoutExerciseId (referential integrity)', () => {
+    expect(() =>
+      validateSnapshot({
+        ...validSnapshot,
+        data: {
+          ...validSnapshot.data,
+          sets: [{ uuid: 'set-orphan', updatedAt: 1, weight: 100, reps: 5 }],
+        },
+      }),
+    ).toThrow(/workoutExerciseId/);
+  });
+
   it('rejects set with non-numeric weight', () => {
     expect(() =>
       validateSnapshot({
@@ -139,6 +163,7 @@ describe('validateSnapshot', () => {
           {
             uuid: 'set-1',
             updatedAt: 1,
+            workoutExerciseId: 'we-1',
             weight: 100,
             reps: 5,
           },

@@ -121,26 +121,30 @@ describe('SyncManager.mergeSnapshot', () => {
     expect(merged?.updatedAt).toBe(20);
   });
 
-  it('keeps local when updatedAt is equal', async () => {
+  it('equal updatedAt with an identical payload keeps local and logs no conflict', async () => {
     const manager = new SyncManager(noopProvider);
     await db.exercises.add({
       uuid: 'ex-eq',
       name: 'Local Keep',
       muscleGroup: 'legs',
       isCustom: true,
+      aliases: [],
+      variations: [],
       updatedAt: 15,
     });
 
-    await manager.mergeSnapshot(
+    const report = await manager.mergeSnapshot(
       emptySnapshot({
         data: {
           settings: [],
           exercises: [
             {
               uuid: 'ex-eq',
-              name: 'Remote Discard',
+              name: 'Local Keep',
               muscleGroup: 'legs',
               isCustom: true,
+              aliases: [],
+              variations: [],
               updatedAt: 15,
             },
           ],
@@ -153,9 +157,47 @@ describe('SyncManager.mergeSnapshot', () => {
 
     const kept = await db.exercises.where('uuid').equals('ex-eq').first();
     expect(kept?.name).toBe('Local Keep');
+    expect(report.conflicts).toBe(0);
+    expect(await db.conflictLog.count()).toBe(0);
   });
 
-  it('settings LWW: remote newer overwrites, equal keeps local', async () => {
+  /**
+   * Regression: the previous rule kept the local copy when `updatedAt` values were equal, so
+   * two devices that edited the same record in the same millisecond kept their own version
+   * forever. The tie-break is now content-based, hence order-independent.
+   */
+  it('equal updatedAt with divergent payloads converges on both devices', async () => {
+    const snapshotFor = (name: string): SyncSnapshot => emptySnapshot({
+      data: {
+        settings: [],
+        exercises: [
+          { uuid: 'ex-tie', name, muscleGroup: 'arms', isCustom: true, aliases: [], variations: [], updatedAt: 7 },
+        ],
+        workouts: [],
+        workoutExercises: [],
+        sets: [],
+      },
+    });
+
+    // Device A holds 'Alpha'; device B holds 'Beta'; both stamped updatedAt = 7.
+    const managerA = new SyncManager(noopProvider);
+    await db.exercises.add({ uuid: 'ex-tie', name: 'Alpha', muscleGroup: 'arms', isCustom: true, updatedAt: 7 });
+    await managerA.mergeSnapshot(snapshotFor('Beta'));
+    const afterA = await db.exercises.where('uuid').equals('ex-tie').first();
+
+    // Same conflict seen from the other side.
+    await resetDb();
+    const managerB = new SyncManager(noopProvider);
+    await db.exercises.add({ uuid: 'ex-tie', name: 'Beta', muscleGroup: 'arms', isCustom: true, updatedAt: 7 });
+    await managerB.mergeSnapshot(snapshotFor('Alpha'));
+    const afterB = await db.exercises.where('uuid').equals('ex-tie').first();
+
+    expect(afterA?.name).toBe(afterB?.name);
+    // The loser is recorded so the overwrite is never silent.
+    expect(await db.conflictLog.count()).toBe(1);
+  });
+
+  it('settings LWW: remote newer overwrites, equal timestamps converge deterministically', async () => {
     const manager = new SyncManager(noopProvider);
     await db.settings.add({
       massUnit: MassUnit.KG,
@@ -191,6 +233,7 @@ describe('SyncManager.mergeSnapshot', () => {
     expect(settings?.massUnit).toBe(MassUnit.LB);
     expect(settings?.theme).toBe('light');
 
+    // Equal timestamps + divergent payload: the tie-break decides, and both devices agree.
     await manager.mergeSnapshot(
       emptySnapshot({
         data: {
@@ -201,7 +244,7 @@ describe('SyncManager.mergeSnapshot', () => {
               defaultRPEType: RPEType.RPE,
               theme: 'system',
               language: 'en',
-              updatedAt: 50, // equal → keep local (remote-from-previous)
+              updatedAt: 50,
             },
           ],
           exercises: [],
@@ -212,9 +255,42 @@ describe('SyncManager.mergeSnapshot', () => {
       }),
     );
 
+    const afterMergeA = await db.settings.toCollection().first();
+
+    await resetDb();
+    const mirrored = new SyncManager(noopProvider);
+    await db.settings.add({
+      massUnit: MassUnit.KG,
+      weightStep: 1,
+      defaultRPEType: RPEType.RPE,
+      theme: 'system',
+      language: 'en',
+      updatedAt: 50,
+    });
+    await mirrored.mergeSnapshot(
+      emptySnapshot({
+        data: {
+          settings: [
+            {
+              massUnit: MassUnit.LB,
+              weightStep: 5,
+              defaultRPEType: RPEType.RIR,
+              theme: 'light',
+              language: 'en',
+              updatedAt: 50,
+            },
+          ],
+          exercises: [],
+          workouts: [],
+          workoutExercises: [],
+          sets: [],
+        },
+      }),
+    );
     settings = await db.settings.toCollection().first();
-    expect(settings?.massUnit).toBe(MassUnit.LB);
-    expect(settings?.theme).toBe('light');
+
+    expect(afterMergeA?.massUnit).toBe(settings?.massUnit);
+    expect(afterMergeA?.theme).toBe(settings?.theme);
   });
 
   it('logs conflict only when fields diverge', async () => {
@@ -305,5 +381,135 @@ describe('SyncManager.mergeSnapshot', () => {
 
     const w = await db.workouts.where('uuid').equals('w-del').first();
     expect(w?.deletedAt).toBe(100);
+    // Status is derived on merge, so the row leaves every indexed query.
+    expect(w?.status).toBe('deleted');
+  });
+
+  it('batches a large merge and keeps every row', async () => {
+    const manager = new SyncManager(noopProvider);
+    const exercises = Array.from({ length: 450 }, (_, index) => ({
+      uuid: `ex-batch-${index}`,
+      name: `Exercise ${index}`,
+      muscleGroup: 'back' as const,
+      isCustom: true,
+      updatedAt: 10,
+    }));
+
+    const report = await manager.mergeSnapshot(
+      emptySnapshot({ data: { settings: [], exercises, workouts: [], workoutExercises: [], sets: [] } }),
+    );
+
+    expect(report.added).toBe(450);
+    expect(await db.exercises.count()).toBe(450);
+  });
+
+  it('skips rows whose parent is unknown and reports them', async () => {
+    const manager = new SyncManager(noopProvider);
+
+    const report = await manager.mergeSnapshot(
+      emptySnapshot({
+        data: {
+          settings: [],
+          exercises: [],
+          workouts: [],
+          workoutExercises: [
+            { uuid: 'we-orphan', workoutId: 'w-missing', exerciseId: 'ex-1', order: 0, updatedAt: 5 },
+          ],
+          sets: [
+            { uuid: 'set-orphan', workoutExerciseId: 'we-missing', order: 0, weight: 100, reps: 5, isWarmup: false, isFailure: false, updatedAt: 5 },
+          ],
+        },
+      }),
+    );
+
+    expect(report.skippedOrphans).toBe(2);
+    expect(await db.workoutExercises.count()).toBe(0);
+    expect(await db.sets.count()).toBe(0);
+  });
+
+  it('recounts workout aggregates for merged sets', async () => {
+    await db.workouts.add({
+      uuid: 'w-agg',
+      startedAt: 1000,
+      workoutDay: '2026-01-01',
+      status: 'finished',
+      endedAt: 2000,
+      setsCount: 0,
+      totalTonnage: 0,
+      exerciseCount: 0,
+      updatedAt: 1,
+    });
+    await db.workoutExercises.add({
+      uuid: 'we-agg',
+      workoutId: 'w-agg',
+      exerciseId: 'ex-agg',
+      order: 0,
+      updatedAt: 1,
+    });
+
+    const manager = new SyncManager(noopProvider);
+    await manager.mergeSnapshot(
+      emptySnapshot({
+        data: {
+          settings: [],
+          exercises: [],
+          workouts: [],
+          workoutExercises: [],
+          // Parent is not part of the snapshot: it exists locally only.
+          sets: [
+            { uuid: 'set-agg', workoutExerciseId: 'we-agg', order: 0, weight: 100, reps: 5, isWarmup: false, isFailure: false, updatedAt: 10 },
+          ],
+        },
+      }),
+    );
+
+    const workout = await db.workouts.where('uuid').equals('w-agg').first();
+    expect(workout?.setsCount).toBe(1);
+    expect(workout?.totalTonnage).toBe(500);
+  });
+
+  it('prunes conflict log entries older than the retention window', async () => {
+    const stale = Date.now() - 365 * 24 * 60 * 60 * 1000;
+    await db.conflictLog.add({
+      uuid: 'conflict-old',
+      entityType: 'exercise',
+      entityId: 'ex-1',
+      localUpdatedAt: 1,
+      remoteUpdatedAt: 2,
+      resolvedAt: stale,
+      resolution: 'remote',
+    });
+
+    const manager = new SyncManager(noopProvider);
+    await manager.mergeSnapshot(emptySnapshot());
+
+    expect(await db.conflictLog.count()).toBe(0);
+  });
+});
+
+describe('SyncManager.sync', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it('rejects a concurrent sync instead of interleaving two merges', async () => {
+    let releasePull: (() => void) | undefined;
+    const gate = new Promise<void>(resolve => {
+      releasePull = resolve;
+    });
+
+    const provider: SyncProvider = {
+      ...noopProvider,
+      async pull() {
+        await gate;
+        return null;
+      },
+    };
+
+    const manager = new SyncManager(provider);
+    const first = manager.sync();
+    await expect(manager.sync()).rejects.toThrow(/already running/i);
+    releasePull?.();
+    await first;
   });
 });

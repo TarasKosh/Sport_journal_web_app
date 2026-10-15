@@ -17,6 +17,12 @@ export type MuscleGroup =
 
 export type MovementType = 'compound' | 'isolation' | 'isometric' | 'cardio';
 
+/**
+ * Derived lifecycle marker for a workout. Indexed, because IndexedDB cannot index
+ * `undefined`/`null`, which made "find the active workout" a full table scan.
+ */
+export type WorkoutStatus = 'active' | 'finished' | 'deleted';
+
 export interface Settings {
     id?: number; // Singleton, usually 1
     massUnit: MassUnit;
@@ -24,6 +30,8 @@ export interface Settings {
     defaultRPEType: RPEType;
     theme: 'dark' | 'light' | 'system';
     language: string;
+    /** Version of the built-in exercise/template catalog already applied to this device. */
+    catalogVersion?: number;
     /** Sync meta — LWW for settings singleton */
     updatedAt?: number;
 }
@@ -60,6 +68,12 @@ export interface Workout {
     notes?: string;
     bodyWeight?: number;
 
+    // Derived, maintained by the data layer (never authored by hand)
+    status?: WorkoutStatus;
+    setsCount?: number;
+    totalTonnage?: number;
+    exerciseCount?: number;
+
     // Sync Meta
     updatedAt: number;
     deletedAt?: number;
@@ -82,6 +96,11 @@ export interface SetEntry {
     id?: number;
     uuid: UUID;
     workoutExerciseId: UUID;
+    /** Denormalized foreign keys (maintained by the data layer) for indexed lookups. */
+    exerciseId?: UUID;
+    workoutId?: UUID;
+    /** Workout start timestamp, denormalized so [exerciseId+performedAt] ranges are cheap. */
+    performedAt?: number;
     order: number;
     weight: number;
     reps: number;
