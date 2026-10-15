@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db/db';
 import { Search, Plus, Dumbbell, X } from 'lucide-react';
 import type { MuscleGroup } from '../../types';
 import { ModalShell } from '../common/ModalShell';
+import { ExerciseRepository } from '../../data/repositories/ExerciseRepository';
 
 interface ExercisePickerModalProps {
     isOpen: boolean;
@@ -28,25 +28,17 @@ export const ExercisePickerModal: React.FC<ExercisePickerModalProps> = ({ isOpen
     const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup | 'all'>('all');
 
     const exercises = useLiveQuery(async () => {
-        let filtered = (await db.exercises.orderBy('name').toArray()).filter(e => e.deletedAt == null);
-
-        if (search) {
-            const lower = search.toLowerCase();
-            filtered = filtered.filter(e =>
-                e.name.toLowerCase().includes(lower) ||
-                e.muscleGroup.includes(lower)
-            );
-        }
+        const filtered = await ExerciseRepository.search(search);
 
         if (selectedMuscleGroup !== 'all') {
-            filtered = filtered.filter(e => e.muscleGroup === selectedMuscleGroup);
+            return filtered.filter(e => e.muscleGroup === selectedMuscleGroup);
         }
 
         return filtered;
     }, [search, selectedMuscleGroup]);
 
     const muscleGroups = useLiveQuery(async () => {
-        const all = (await db.exercises.toArray()).filter(e => e.deletedAt == null);
+        const all = await ExerciseRepository.listActive();
         const groups = new Set(all.map(e => e.muscleGroup));
         return Array.from(groups).sort();
     });

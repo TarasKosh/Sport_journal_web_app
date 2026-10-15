@@ -1,16 +1,13 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import type { Exercise, Workout } from '../../types';
-import { db } from '../../db/db';
-import { useLiveQuery } from 'dexie-react-hooks';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import type { Workout } from '../../types';
 import { Button } from '../common/Button';
 import { Plus, CheckCircle, Trash2, Clock, Dumbbell } from 'lucide-react';
 
 import { ExercisePickerModal } from './ExercisePickerModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
-import { v4 as uuidv4 } from 'uuid';
 import { SetList } from './WorkoutSetList';
-import { softDeleteWorkout, softDeleteWorkoutExerciseAndReorder } from '../../services/data/softDelete';
-import { onlyActive } from '../../utils/entityFilters';
+import { useWorkoutEditor } from '../../hooks/useWorkoutEditor';
+import { WorkoutRepository } from '../../data/repositories/WorkoutRepository';
 
 const WorkoutTimer: React.FC<{ startedAt: number }> = React.memo(({ startedAt }) => {
     const [duration, setDuration] = useState(() => Date.now() - startedAt);
@@ -39,23 +36,10 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
 
     // Two-tap confirm states
     const [confirmDiscard, setConfirmDiscard] = useState(false);
-    const [confirmDeleteExerciseId, setConfirmDeleteExerciseId] = useState<number | null>(null);
+    const [confirmDeleteExerciseUuid, setConfirmDeleteExerciseUuid] = useState<string | null>(null);
 
-    const exercises = useLiveQuery(async () => {
-        const list = onlyActive(await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray());
-        return list.sort((a, b) => a.order - b.order);
-    }, [workout.uuid]);
-
-    // Include soft-deleted exercises so in-session rows still resolve names after library delete
-    const allExercises = useLiveQuery(() => db.exercises.toArray(), []);
-    const exerciseMap = useMemo(() => {
-        const map = new Map<string, Exercise>();
-        for (const ex of allExercises ?? []) map.set(ex.uuid, ex);
-        return map;
-    }, [allExercises]);
-
-    const exercisesRef = useRef(exercises);
-    useEffect(() => { exercisesRef.current = exercises; }, [exercises]);
+    const { workoutExercises, exerciseIndex, addExercise, addTemplate, moveExercise, removeExercise } =
+        useWorkoutEditor(workout.uuid);
 
     const confirmDiscardTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
     const confirmDeleteTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -67,57 +51,28 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
         };
     }, []);
 
-    const handleAddExercise = useCallback(async (exerciseId: string) => {
+    const handleAddExercise = useCallback(async (exerciseUuid: string) => {
         try {
-            const active = onlyActive(
-                await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray(),
-            );
-            await db.workoutExercises.add({
-                uuid: uuidv4(),
-                workoutId: workout.uuid,
-                exerciseId,
-                order: active.length,
-                updatedAt: Date.now()
-            });
+            await addExercise(exerciseUuid);
             setIsPickerOpen(false);
         } catch (e) {
             console.error("Failed to add exercise", e);
         }
-    }, [workout.uuid]);
+    }, [addExercise]);
 
-    const handleAddTemplate = useCallback(async (templateId: string) => {
+    const handleAddTemplate = useCallback(async (templateUuid: string) => {
         try {
-            const template = await db.workoutTemplates.where('uuid').equals(templateId).first();
-            if (!template || template.deletedAt != null) return;
-
-            const active = onlyActive(
-                await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray(),
-            );
-            const count = active.length;
-
-            for (let i = 0; i < template.exercises.length; i++) {
-                await db.workoutExercises.add({
-                    uuid: uuidv4(),
-                    workoutId: workout.uuid,
-                    exerciseId: template.exercises[i],
-                    order: count + i,
-                    updatedAt: Date.now()
-                });
-            }
-
+            await addTemplate(templateUuid);
             setIsTemplatePickerOpen(false);
         } catch (e) {
             console.error("Failed to add template", e);
         }
-    }, [workout.uuid]);
+    }, [addTemplate]);
 
     const handleFinish = useCallback(async () => {
-        await db.workouts.update(workout.id!, {
-            endedAt: Date.now(),
-            updatedAt: Date.now()
-        });
+        await WorkoutRepository.finish(workout.uuid);
         onFinished?.(workout.uuid);
-    }, [workout.id, workout.uuid, onFinished]);
+    }, [workout.uuid, onFinished]);
 
     const cancelWorkout = useCallback(async () => {
         if (!confirmDiscard) {
@@ -126,39 +81,21 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
             confirmDiscardTimerRef.current = setTimeout(() => setConfirmDiscard(false), 3000);
             return;
         }
-        if (workout.id != null) {
-            await softDeleteWorkout(workout.id);
-        }
+        await WorkoutRepository.softDelete(workout.uuid);
         onDiscarded?.(workout.uuid);
-    }, [workout.id, workout.uuid, onDiscarded, confirmDiscard]);
+    }, [workout.uuid, onDiscarded, confirmDiscard]);
 
-    const deleteExercise = useCallback(async (workoutExerciseId: number) => {
-        if (confirmDeleteExerciseId !== workoutExerciseId) {
-            setConfirmDeleteExerciseId(workoutExerciseId);
+    const deleteExercise = useCallback(async (workoutExerciseUuid: string) => {
+        if (confirmDeleteExerciseUuid !== workoutExerciseUuid) {
+            setConfirmDeleteExerciseUuid(workoutExerciseUuid);
             if (confirmDeleteTimerRef.current) clearTimeout(confirmDeleteTimerRef.current);
-            confirmDeleteTimerRef.current = setTimeout(() => setConfirmDeleteExerciseId(null), 3000);
+            confirmDeleteTimerRef.current = setTimeout(() => setConfirmDeleteExerciseUuid(null), 3000);
             return;
         }
 
-        await softDeleteWorkoutExerciseAndReorder(workoutExerciseId, workout.uuid);
-        setConfirmDeleteExerciseId(null);
-    }, [confirmDeleteExerciseId, workout.uuid]);
-
-    const moveExercise = useCallback(async (index: number, direction: 'up' | 'down') => {
-        const currentExercises = exercisesRef.current;
-        if (!currentExercises) return;
-
-        const newIndex = direction === 'up' ? index - 1 : index + 1;
-        if (newIndex < 0 || newIndex >= currentExercises.length) return;
-
-        const ex1 = currentExercises[index];
-        const ex2 = currentExercises[newIndex];
-
-        const now = Date.now();
-        // Swap orders
-        await db.workoutExercises.update(ex1.id!, { order: newIndex, updatedAt: now });
-        await db.workoutExercises.update(ex2.id!, { order: index, updatedAt: now });
-    }, []);
+        await removeExercise(workoutExerciseUuid);
+        setConfirmDeleteExerciseUuid(null);
+    }, [confirmDeleteExerciseUuid, removeExercise]);
 
     return (
         <div className="flex flex-col h-full bg-bg-primary">
@@ -175,7 +112,7 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <Dumbbell size={16} />
-                                    <span className="font-semibold">{exercises?.length || 0} exercises</span>
+                                    <span className="font-semibold">{workoutExercises?.length || 0} exercises</span>
                                 </div>
                             </div>
                         </div>
@@ -205,7 +142,7 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24">
-                {exercises?.length === 0 && (
+                {workoutExercises?.length === 0 && (
                     <div className="text-center py-16 px-6">
                         <div className="bg-bg-tertiary w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
                             <Dumbbell size={36} className="text-text-tertiary" />
@@ -215,20 +152,18 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
                     </div>
                 )}
 
-                {exercises?.map((we, index) => (
-                        <SetList
-                            key={we.uuid}
-                            workoutExercise={we}
-                            exercise={exerciseMap.get(we.exerciseId)}
-                            index={index}
-                            totalCount={exercises.length}
-                            onDelete={deleteExercise}
-                            workoutExerciseId={we.id!}
-                            isConfirmingDelete={confirmDeleteExerciseId === we.id}
-                            onMoveUp={moveExercise}
-                            onMoveDown={moveExercise}
-                        />
-                    ))}
+                {workoutExercises?.map((workoutExercise, index) => (
+                    <SetList
+                        key={workoutExercise.uuid}
+                        workoutExercise={workoutExercise}
+                        exercise={exerciseIndex.get(workoutExercise.exerciseId)}
+                        index={index}
+                        totalCount={workoutExercises.length}
+                        onDelete={deleteExercise}
+                        isConfirmingDelete={confirmDeleteExerciseUuid === workoutExercise.uuid}
+                        onMove={moveExercise}
+                    />
+                ))}
 
                 {/* Add Buttons */}
                 <div className="grid grid-cols-2 gap-3">
@@ -273,5 +208,3 @@ export const ActiveWorkoutView: React.FC<{ workout: Workout; onFinished?: (worko
         </div>
     );
 };
-
-

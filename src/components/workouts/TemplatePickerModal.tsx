@@ -1,8 +1,8 @@
 import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db/db';
 import { Dumbbell, Plus } from 'lucide-react';
 import { ModalShell } from '../common/ModalShell';
+import { TemplateRepository } from '../../data/repositories/TemplateRepository';
 
 interface TemplatePickerModalProps {
     isOpen: boolean;
@@ -11,9 +11,7 @@ interface TemplatePickerModalProps {
 }
 
 export const TemplatePickerModal: React.FC<TemplatePickerModalProps> = ({ isOpen, onClose, onSelect }) => {
-    const templates = useLiveQuery(async () =>
-        (await db.workoutTemplates.toArray()).filter(t => t.deletedAt == null),
-    );
+    const templates = useLiveQuery(() => TemplateRepository.listActive(), []);
 
     return (
         <ModalShell

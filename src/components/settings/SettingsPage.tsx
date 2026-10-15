@@ -1,34 +1,29 @@
 import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db/db';
 import { Card } from '../common/Card';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { MassUnit, RPEType, type Settings } from '../../types';
+import { SettingsRepository, resetDatabase } from '../../data/repositories/SettingsRepository';
 import { SyncPage } from '../sync/SyncPage';
 import { usePWA } from '../../hooks/usePWA';
 import { Download, CheckCircle2 } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
 
 export const SettingsPage: React.FC = () => {
-    const settings = useLiveQuery(() => db.settings.toCollection().first());
+    const settings = useLiveQuery(() => SettingsRepository.get());
     const { isInstallable, isInstalled, installApp } = usePWA();
     const { showToast } = useToast();
+    const [isResetDialogOpen, setIsResetDialogOpen] = React.useState(false);
 
-    type SettingsKey = Exclude<keyof Settings, 'id'>;
-    const updateSetting = async <K extends SettingsKey>(key: K, value: Settings[K]) => {
-        const now = Date.now();
-        if (settings) {
-            await db.settings.update(settings.id!, { [key]: value, updatedAt: now });
-        } else {
-            await db.settings.add({
-                massUnit: MassUnit.KG,
-                weightStep: 2.5,
-                defaultRPEType: RPEType.RPE,
-                theme: 'system',
-                language: 'en',
-                updatedAt: now,
-                [key]: value,
-            } as Settings);
-        }
+    const updateSetting = async (patch: Partial<Settings>) => {
+        await SettingsRepository.update(patch);
+    };
+
+    const handleResetDatabase = async () => {
+        setIsResetDialogOpen(false);
+        await resetDatabase();
+        showToast('Database reset', 'info');
+        window.location.reload();
     };
 
     if (!settings) return <div>Loading...</div>;
@@ -45,7 +40,7 @@ export const SettingsPage: React.FC = () => {
                             id="settings-mass-unit"
                             className="bg-bg-tertiary border border-transparent rounded px-2 py-1"
                             value={settings.massUnit}
-                            onChange={(e) => updateSetting('massUnit', e.target.value as MassUnit)}
+                            onChange={(e) => updateSetting({ massUnit: e.target.value as MassUnit })}
                         >
                             <option value={MassUnit.KG}>Kilograms (kg)</option>
                             <option value={MassUnit.LB}>Pounds (lb)</option>
@@ -58,7 +53,7 @@ export const SettingsPage: React.FC = () => {
                             id="settings-weight-step"
                             className="bg-bg-tertiary border border-transparent rounded px-2 py-1"
                             value={settings.weightStep}
-                            onChange={(e) => updateSetting('weightStep', Number(e.target.value))}
+                            onChange={(e) => updateSetting({ weightStep: Number(e.target.value) })}
                         >
                             <option value={0.5}>0.5</option>
                             <option value={1}>1</option>
@@ -73,7 +68,7 @@ export const SettingsPage: React.FC = () => {
                             id="settings-rpe-type"
                             className="bg-bg-tertiary border border-transparent rounded px-2 py-1"
                             value={settings.defaultRPEType}
-                            onChange={(e) => updateSetting('defaultRPEType', e.target.value as RPEType)}
+                            onChange={(e) => updateSetting({ defaultRPEType: e.target.value as RPEType })}
                         >
                             <option value={RPEType.RPE}>RPE (1–10)</option>
                             <option value={RPEType.RIR}>RIR (reps in reserve)</option>
@@ -86,7 +81,7 @@ export const SettingsPage: React.FC = () => {
                             id="settings-theme"
                             className="bg-bg-tertiary border border-transparent rounded px-2 py-1"
                             value={settings.theme}
-                            onChange={(e) => updateSetting('theme', e.target.value as Settings['theme'])}
+                            onChange={(e) => updateSetting({ theme: e.target.value as Settings['theme'] })}
                         >
                             <option value="system">System</option>
                             <option value="dark">Dark</option>
@@ -101,19 +96,7 @@ export const SettingsPage: React.FC = () => {
             <Card className="bg-danger/10 border-2 border-danger/30">
                 <h3 className="text-sm font-bold text-danger mb-2">Danger Zone</h3>
                 <button
-                    onClick={async () => {
-                        if (!confirm('Are you sure you want to delete ALL data? This cannot be undone!')) {
-                            return;
-                        }
-                        const typed = window.prompt('Type DELETE to confirm full database reset:');
-                        if (typed !== 'DELETE') {
-                            showToast('Reset cancelled', 'info');
-                            return;
-                        }
-                        await db.delete();
-                        showToast('Database reset', 'info');
-                        window.location.reload();
-                    }}
+                    onClick={() => setIsResetDialogOpen(true)}
                     className="w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 active:bg-red-800 transition-colors shadow-md flex items-center justify-center gap-2"
                 >
                     🗑️ Reset Database
@@ -156,6 +139,17 @@ export const SettingsPage: React.FC = () => {
                     Data stored locally on device.
                 </p>
             </Card>
+
+            <ConfirmDialog
+                isOpen={isResetDialogOpen}
+                title="Reset Database"
+                description="Are you sure you want to delete ALL data? This cannot be undone!"
+                confirmLabel="Reset Database"
+                variant="danger"
+                typeToConfirm="DELETE"
+                onConfirm={handleResetDatabase}
+                onClose={() => setIsResetDialogOpen(false)}
+            />
         </div>
     );
 };

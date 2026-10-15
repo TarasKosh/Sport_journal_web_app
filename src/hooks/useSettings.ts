@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db/db';
 import { MassUnit, RPEType, type Settings } from '../types';
+import { SettingsRepository } from '../data/repositories/SettingsRepository';
 
 export const DEFAULT_SETTINGS: Settings = {
     massUnit: MassUnit.KG,
@@ -12,6 +12,6 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export function useSettings(): Settings {
-    const settings = useLiveQuery(() => db.settings.toCollection().first());
+    const settings = useLiveQuery(() => SettingsRepository.get());
     return settings ?? DEFAULT_SETTINGS;
 }

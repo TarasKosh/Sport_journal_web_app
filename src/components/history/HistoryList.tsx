@@ -1,28 +1,31 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db/db';
+import { WorkoutRepository } from '../../data/repositories/WorkoutRepository';
 import { EditWorkoutModal } from '../workouts/EditWorkoutModal';
 import { WorkoutDetailsView } from './WorkoutDetailsView';
 import { WorkoutCard } from './WorkoutCard';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import type { Workout } from '../../types';
-import { softDeleteWorkout } from '../../services/data/softDelete';
 import { useToast } from '../../hooks/useToast';
+
+/** Finished workouts fetched per page. */
+const PAGE_SIZE = 20;
 
 export const HistoryList: React.FC = () => {
     const { showToast } = useToast();
     const [editingWorkout, setEditingWorkout] = React.useState<Workout | null>(null);
     const [selectedWorkout, setSelectedWorkout] = React.useState<Workout | null>(null);
+    const [workoutToDelete, setWorkoutToDelete] = React.useState<Workout | null>(null);
+    const [pageCount, setPageCount] = React.useState(1);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const scrollPositionRef = useRef<number>(0);
 
-    // Fetch completed workouts descending (exclude soft-deleted)
-    const workouts = useLiveQuery(async () => {
-        return await db.workouts
-            .orderBy('workoutDay')
-            .reverse()
-            .filter(w => !!w.endedAt && w.deletedAt == null)
-            .toArray();
-    });
+    // Finished workouts descending (newest day first). Growing the page size loads more.
+    const workouts = useLiveQuery(
+        () => WorkoutRepository.listFinishedPage(0, pageCount * PAGE_SIZE),
+        [pageCount],
+    );
+    const total = useLiveQuery(() => WorkoutRepository.countFinished(), []);
 
     // Save scroll position when leaving list view
     useEffect(() => {
@@ -56,31 +59,40 @@ export const HistoryList: React.FC = () => {
         setSelectedWorkout(null);
     };
 
-    const handleEditWorkout = useCallback((w: Workout) => {
-        if (w.id) {
-            setEditingWorkout(w);
+    const handleEditWorkout = useCallback((workout: Workout) => {
+        if (workout.uuid) {
+            setEditingWorkout(workout);
         }
     }, []);
 
-    const handleDeleteWorkout = useCallback(async (workout: Workout) => {
-        if (!workout.id) return;
+    // Open the delete confirmation dialog for a workout
+    const handleDeleteWorkout = useCallback((workout: Workout) => {
+        setWorkoutToDelete(workout);
+    }, []);
 
-        if (confirm('Delete this workout? It will be removed on this device and after the next sync.')) {
-            try {
-                await softDeleteWorkout(workout.id);
-                showToast('Workout deleted', 'success');
-            } catch (e) {
-                console.error('Failed to delete workout', e);
-                showToast('Failed to delete workout. Please try again.', 'error');
-            }
+    // Soft-delete the workout once the user confirms
+    const confirmDeleteWorkout = useCallback(async () => {
+        const workout = workoutToDelete;
+        setWorkoutToDelete(null);
+        if (!workout) return;
+
+        try {
+            await WorkoutRepository.softDelete(workout.uuid);
+            showToast('Workout deleted', 'success');
+        } catch (e) {
+            console.error('Failed to delete workout', e);
+            showToast('Failed to delete workout. Please try again.', 'error');
         }
-    }, [showToast]);
+    }, [workoutToDelete, showToast]);
 
     if (!workouts) return <div className="p-4 text-center">Loading...</div>;
 
     if (selectedWorkout) {
         return <WorkoutDetailsView workout={selectedWorkout} onBack={handleBackFromDetails} />;
     }
+
+    const loadedCount = workouts.length;
+    const hasMore = total != null && loadedCount < total;
 
     return (
         <div 
@@ -103,6 +115,15 @@ export const HistoryList: React.FC = () => {
                     onClick={handleWorkoutClick}
                 />
             ))}
+            {hasMore && (
+                <button
+                    onClick={() => setPageCount(count => count + 1)}
+                    className="w-full py-3 px-4 rounded-xl border border-border bg-bg-secondary hover:bg-bg-tertiary text-text-primary font-semibold transition-colors"
+                >
+                    Load more
+                </button>
+            )}
+            {/* Metadata saves on blur/change; onSaved intentionally does not close the modal. */}
             {editingWorkout && (
                 <EditWorkoutModal
                     workout={editingWorkout}
@@ -110,11 +131,17 @@ export const HistoryList: React.FC = () => {
                     onClose={() => {
                         setEditingWorkout(null);
                     }}
-                    onSaved={() => {
-                        setEditingWorkout(null);
-                    }}
                 />
             )}
+            <ConfirmDialog
+                isOpen={workoutToDelete !== null}
+                title="Delete workout"
+                description="Delete this workout? It will be removed on this device and after the next sync."
+                confirmLabel="Delete"
+                variant="danger"
+                onConfirm={confirmDeleteWorkout}
+                onClose={() => setWorkoutToDelete(null)}
+            />
 
         </div>
     );

@@ -1,6 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db/db';
+import { WorkoutRepository } from '../../data/repositories/WorkoutRepository';
+import { WorkoutExerciseRepository } from '../../data/repositories/WorkoutExerciseRepository';
+import { SetRepository } from '../../data/repositories/SetRepository';
+import { useExerciseIndex } from '../../hooks/useExerciseIndex';
 import type { Exercise, Workout, WorkoutExercise, SetEntry } from '../../types';
 import { ArrowLeft, Edit2, Calendar, Clock, Heart, Scale, FileText, ChevronDown, ChevronUp, Dumbbell } from 'lucide-react';
 import { Button } from '../common/Button';
@@ -21,6 +24,9 @@ interface WorkoutDetailsViewProps {
  * - Metadata (date, duration, mood, body weight, notes)
  * - List of exercises with sets table
  * - Summary statistics (total exercises, sets, tonnage)
+ *
+ * Reads the workout, its exercises and its sets through the repositories, so the view
+ * stays reactive without touching IndexedDB directly.
  */
 export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout, onBack }) => {
   const settings = useSettings();
@@ -28,12 +34,16 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
 
-  // Load exercises for this workout
-  const workoutExercises = useLiveQuery(async () => {
-    const list = (await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray())
-      .filter(we => we.deletedAt == null);
-    return list.sort((a, b) => a.order - b.order);
-  }, [workout.uuid]);
+  // Re-read the workout reactively so metadata edits are reflected; fall back to the
+  // prop while the live query resolves.
+  const liveWorkout = useLiveQuery(() => WorkoutRepository.getByUuid(workout.uuid), [workout.uuid]);
+  const currentWorkout = liveWorkout ?? workout;
+
+  // Exercises for this workout, already ordered by the [workoutId+order] index.
+  const workoutExercises = useLiveQuery(
+    () => WorkoutExerciseRepository.listByWorkout(workout.uuid),
+    [workout.uuid],
+  );
 
   // Expand all exercises by default when loaded
   React.useEffect(() => {
@@ -42,30 +52,15 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
     }
   }, [workoutExercises]);
 
-  // Batch-load exercises to avoid N+1 queries
-  // Include soft-deleted exercises so history still resolves exercise names
-  const allExercises = useLiveQuery(() => db.exercises.toArray(), []);
-  const exerciseMap = useMemo(() => {
-    const map = new Map<string, Exercise>();
-    for (const ex of allExercises ?? []) map.set(ex.uuid, ex);
-    return map;
-  }, [allExercises]);
+  // Shared uuid -> exercise lookup (includes soft-deleted exercises so history still
+  // resolves exercise names) - one live query for the whole view.
+  const exerciseIndex = useExerciseIndex();
 
-  // Load all sets for all exercises
-  const allSets = useLiveQuery(async () => {
-    if (!workoutExercises || workoutExercises.length === 0) return [];
-    const workoutExerciseUuids = workoutExercises.map(we => we.uuid);
-    return await db.sets.where('workoutExerciseId').anyOf(workoutExerciseUuids).toArray()
-      .then(sets => {
-        const active = sets.filter(s => s.deletedAt == null);
-        const exerciseOrder = Object.fromEntries(workoutExercises.map((we, i) => [we.uuid, i]));
-        return active.sort((a, b) => {
-          const orderA = exerciseOrder[a.workoutExerciseId] ?? 999;
-          const orderB = exerciseOrder[b.workoutExerciseId] ?? 999;
-          return orderA !== orderB ? orderA - orderB : a.order - b.order;
-        });
-      });
-  }, [workoutExercises]);
+  // Load all active sets for the workout.
+  const allSets = useLiveQuery(
+    () => SetRepository.listByWorkout(workout.uuid),
+    [workout.uuid],
+  );
 
   // Calculate summary statistics
   const summary = React.useMemo(() => {
@@ -99,11 +94,11 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
   }, [workoutExercises, allSets]);
 
   // Format duration
-  const duration = workout.endedAt && workout.startedAt
-    ? Math.round((workout.endedAt - workout.startedAt) / 1000 / 60)
+  const duration = currentWorkout.endedAt && currentWorkout.startedAt
+    ? Math.round((currentWorkout.endedAt - currentWorkout.startedAt) / 1000 / 60)
     : null;
 
-  const workoutDate = workoutDayToDate(workout.workoutDay);
+  const workoutDate = workoutDayToDate(currentWorkout.workoutDay);
 
   // Toggle exercise expansion
   const toggleExercise = (exerciseUuid: string) => {
@@ -144,12 +139,12 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
             >
               <ArrowLeft size={20} />
             </Button>
-            <h1 className="text-2xl font-bold">{workout.title || "Workout"}</h1>
+            <h1 className="text-2xl font-bold">{currentWorkout.title || "Workout"}</h1>
           </div>
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setEditingWorkout(workout)}
+            onClick={() => setEditingWorkout(currentWorkout)}
             className="text-white hover:bg-white/20"
             title="Edit workout"
           >
@@ -171,17 +166,17 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
               <span className="text-white font-medium">{duration} min</span>
             </div>
           )}
-          {workout.mood && (
+          {currentWorkout.mood && (
             <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">
               <Heart size={16} className="text-white/90" />
-              <span className="text-white font-medium">{getMoodEmoji(workout.mood)} {workout.mood}</span>
+              <span className="text-white font-medium">{getMoodEmoji(currentWorkout.mood)} {currentWorkout.mood}</span>
             </div>
           )}
-          {workout.bodyWeight != null && (
+          {currentWorkout.bodyWeight != null && (
             <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">
               <Scale size={16} className="text-white/90" />
               <span className="text-white font-medium">
-                {kgToDisplay(workout.bodyWeight, settings.massUnit)} {unitLabel}
+                {kgToDisplay(currentWorkout.bodyWeight, settings.massUnit)} {unitLabel}
               </span>
             </div>
           )}
@@ -223,13 +218,13 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
         </Card>
 
         {/* Notes */}
-        {workout.notes && (
+        {currentWorkout.notes && (
           <Card className="p-4 border-l-4 border-l-accent">
             <h2 className="text-lg font-bold mb-3 flex items-center gap-2 text-text-primary">
               <FileText size={18} className="text-accent" />
               Notes
             </h2>
-            <p className="text-text-secondary whitespace-pre-wrap leading-relaxed">{workout.notes}</p>
+            <p className="text-text-secondary whitespace-pre-wrap leading-relaxed">{currentWorkout.notes}</p>
           </Card>
         )}
 
@@ -244,7 +239,7 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
               <p className="text-text-secondary">No exercises logged for this workout.</p>
             </Card>
           ) : (workoutExercises.map((we) => {
-            const exercise = exerciseMap.get(we.exerciseId);
+            const exercise = exerciseIndex.get(we.exerciseId);
             return (
               <ExerciseCard
                 key={we.uuid}
@@ -259,13 +254,12 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
         </div>
       </div>
 
-      {/* Edit Modal */}
+      {/* Edit Modal — metadata saves on blur/change, so onSaved does not close it. */}
       {editingWorkout && (
         <EditWorkoutModal
           workout={editingWorkout}
           isOpen={!!editingWorkout}
           onClose={() => setEditingWorkout(null)}
-          onSaved={() => setEditingWorkout(null)}
         />
       )}
     </div>

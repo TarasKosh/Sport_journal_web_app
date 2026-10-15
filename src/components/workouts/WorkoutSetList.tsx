@@ -1,22 +1,21 @@
 import React from 'react';
 import type { Exercise, WorkoutExercise } from '../../types';
-import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Plus, Dumbbell, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
 import { Card } from '../common/Card';
 import { SetItem } from './SetItem';
+import { SetRepository, type NewSetInput } from '../../data/repositories/SetRepository';
+import { ExerciseRepository } from '../../data/repositories/ExerciseRepository';
 
 interface SetListProps {
     workoutExercise: WorkoutExercise;
     exercise?: Exercise;
     index?: number;
     totalCount?: number;
-    onDelete?: (id: number) => void;
+    /** Receives the workout-exercise uuid, not the local auto-increment id. */
+    onDelete?: (workoutExerciseUuid: string) => void;
     isConfirmingDelete?: boolean;
-    onMoveUp?: (index: number, direction: 'up' | 'down') => void;
-    onMoveDown?: (index: number, direction: 'up' | 'down') => void;
-    workoutExerciseId?: number;
+    onMove?: (workoutExerciseUuid: string, direction: 'up' | 'down') => void;
 }
 
 export const SetList: React.FC<SetListProps> = React.memo(({
@@ -26,88 +25,57 @@ export const SetList: React.FC<SetListProps> = React.memo(({
     totalCount,
     onDelete,
     isConfirmingDelete,
-    onMoveUp,
-    onMoveDown,
-    workoutExerciseId,
+    onMove,
 }) => {
     const [trackSides, setTrackSides] = React.useState(exercise?.isUnilateral || false);
     const [showAddVariation, setShowAddVariation] = React.useState(false);
     const [newVariation, setNewVariation] = React.useState('');
     const variations = React.useMemo(() => exercise?.variations || [], [exercise?.variations]);
 
-    const sets = useLiveQuery(async () => {
-        const s = (await db.sets.where('workoutExerciseId').equals(workoutExercise.uuid).toArray())
-            .filter(set => set.deletedAt == null);
-        return s.sort((a, b) => a.order - b.order);
-    }, [workoutExercise.uuid]);
+    const sets = useLiveQuery(
+        () => SetRepository.listByWorkoutExercise(workoutExercise.uuid),
+        [workoutExercise.uuid],
+    );
 
     const handleAddSet = async () => {
         const lastSet = sets && sets.length > 0 ? sets[sets.length - 1] : null;
 
-        let defaultWeight = 0;
-        let defaultReps = 0;
+        const defaults: NewSetInput = lastSet
+            ? {
+                weight: lastSet.weight,
+                reps: lastSet.reps,
+                variation: lastSet.variation,
+                rpe: lastSet.rpe,
+                rir: lastSet.rir,
+            }
+            : {};
 
-        if (lastSet) {
-            defaultWeight = lastSet.weight;
-            defaultReps = lastSet.reps;
-        } else {
-            // First set: last historical working weight for this exercise (not body mass)
-            try {
-                const pastWorkoutExercises = (await db.workoutExercises
-                    .where('exerciseId')
-                    .equals(workoutExercise.exerciseId)
-                    .toArray())
-                    .filter(we => we.deletedAt == null);
-
-                const pastIds = pastWorkoutExercises
-                    .filter(we => we.uuid !== workoutExercise.uuid)
-                    .map(we => we.uuid);
-
-                if (pastIds.length > 0) {
-                    const pastSets = (await db.sets
-                        .where('workoutExerciseId')
-                        .anyOf(pastIds)
-                        .toArray())
-                        .filter(s => s.deletedAt == null);
-
-                    if (pastSets.length > 0) {
-                        pastSets.sort((a, b) => b.updatedAt - a.updatedAt);
-                        defaultWeight = pastSets[0].weight;
-                    }
-                }
-            } catch (error) {
-                console.error("Failed to fetch default weight", error);
+        // First set of the exercise: prefill the weight from the last time it was performed.
+        // `lastPerformance` orders by workout date, so editing an old workout no longer
+        // promotes it to "latest" and prefills the wrong load.
+        if (!lastSet) {
+            const previous = await SetRepository.lastPerformance(workoutExercise.exerciseId, {
+                excludeWorkoutExerciseUuid: workoutExercise.uuid,
+            });
+            if (previous) {
+                defaults.weight = previous.weight;
             }
         }
 
-        await db.sets.add({
-            uuid: uuidv4(),
-            workoutExerciseId: workoutExercise.uuid,
-            order: sets ? sets.length : 0,
-            weight: defaultWeight,
-            reps: defaultReps,
-            variation: lastSet ? lastSet.variation : undefined,
-            rpe: lastSet ? lastSet.rpe : undefined,
+        await SetRepository.add(workoutExercise.uuid, {
+            ...defaults,
             side: trackSides ? 'left' : undefined,
             isWarmup: false,
             isFailure: false,
-            updatedAt: Date.now()
         });
     };
 
     const handleSaveVariation = async () => {
-        if (!exercise?.id) return;
+        if (exercise?.id == null) return;
         const next = newVariation.trim();
         if (!next) return;
 
-        const current = Array.isArray(exercise.variations) ? exercise.variations : [];
-        const exists = current.some(v => v.toLowerCase() === next.toLowerCase());
-        if (exists) return;
-
-        await db.exercises.update(exercise.id, {
-            variations: [...current, next],
-            updatedAt: Date.now()
-        });
+        await ExerciseRepository.addVariation(exercise.id, next);
         setNewVariation('');
         setShowAddVariation(false);
     };
@@ -136,7 +104,7 @@ export const SetList: React.FC<SetListProps> = React.memo(({
                     {/* Delete button - Always accessible in top right */}
                     {onDelete && (
                         <button
-                            onClick={() => { if (workoutExerciseId != null) onDelete?.(workoutExerciseId); }}
+                            onClick={() => onDelete(workoutExercise.uuid)}
                             className={`transition-all p-2.5 rounded-xl flex items-center gap-2 ${isConfirmingDelete
                                 ? 'bg-danger text-white font-bold shadow-lg shadow-danger/20'
                                 : 'bg-bg-tertiary text-text-tertiary hover:text-danger hover:bg-danger/10'
@@ -172,10 +140,10 @@ export const SetList: React.FC<SetListProps> = React.memo(({
                 {/* Row 3: Move Controls & Stats */}
                 <div className="flex items-center justify-between mt-1 pt-3 border-t border-border/20">
                     <div className="flex items-center gap-1 bg-bg-tertiary/50 p-1 rounded-xl border border-border/40">
-                        {onMoveUp && onMoveDown && typeof index === 'number' && typeof totalCount === 'number' && (
+                        {onMove && typeof index === 'number' && typeof totalCount === 'number' && (
                             <>
                                 <button
-                                    onClick={() => onMoveUp?.(index ?? 0, 'up')}
+                                    onClick={() => onMove(workoutExercise.uuid, 'up')}
                                     disabled={index === 0}
                                     className="text-text-tertiary hover:text-accent disabled:opacity-20 transition-all p-1.5 hover:bg-white rounded-lg"
                                     aria-label="Move exercise up"
@@ -184,7 +152,7 @@ export const SetList: React.FC<SetListProps> = React.memo(({
                                 </button>
                                 <div className="w-px h-4 bg-border/40" />
                                 <button
-                                    onClick={() => onMoveDown?.(index ?? 0, 'down')}
+                                    onClick={() => onMove(workoutExercise.uuid, 'down')}
                                     disabled={index === totalCount - 1}
                                     className="text-text-tertiary hover:text-accent disabled:opacity-20 transition-all p-1.5 hover:bg-white rounded-lg"
                                     aria-label="Move exercise down"

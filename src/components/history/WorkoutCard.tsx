@@ -1,11 +1,8 @@
 import React from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db/db';
 import { Card } from '../common/Card';
 import { Calendar, Edit2, Trash2, Dumbbell } from 'lucide-react';
 import type { Workout } from '../../types';
 import { workoutDayToDate } from '../../utils/dateUtils';
-import { safeNum } from '../../utils';
 import { useSettings } from '../../hooks/useSettings';
 import { kgToDisplay, massUnitLabel } from '../../utils/mass';
 
@@ -19,43 +16,21 @@ interface WorkoutCardProps {
 /**
  * Card component for displaying a workout in history list
  * Shows quick metrics: duration, exercise count, total tonnage
+ *
+ * The quick metrics are read from the aggregates the data layer keeps on the workout
+ * row (`setsCount`, `totalTonnage`, `exerciseCount`), so rendering a card no longer
+ * spawns its own live queries for the workout's exercises and sets.
  */
 export const WorkoutCard: React.FC<WorkoutCardProps> = React.memo(({ workout, onEdit, onDelete, onClick }) => {
   const settings = useSettings();
   const unitLabel = massUnitLabel(settings.massUnit).toLowerCase();
-  // Load exercises count and calculate tonnage
-  const workoutExercises = useLiveQuery(async () => {
-    return (await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray())
-      .filter(we => we.deletedAt == null);
-  }, [workout.uuid]);
 
-  const allSets = useLiveQuery(async () => {
-    if (!workoutExercises || workoutExercises.length === 0) return [];
-    const workoutExerciseUuids = workoutExercises.map(we => we.uuid);
-    return (await db.sets.where('workoutExerciseId').anyOf(workoutExerciseUuids).toArray())
-      .filter(s => s.deletedAt == null);
-  }, [workoutExercises]);
-
-  // Calculate quick metrics
-  const metrics = React.useMemo(() => {
-    if (!workoutExercises || !allSets) {
-      return { exerciseCount: 0, tonnage: 0 };
-    }
-
-    let tonnage = 0;
-    allSets.forEach(set => {
-      const reps = safeNum(set.reps);
-      const weight = safeNum(set.weight);
-      if (reps > 0 && weight > 0) {
-        tonnage += weight * reps;
-      }
-    });
-
-    return {
-      exerciseCount: workoutExercises.length,
-      tonnage: Math.round(tonnage * 10) / 10
-    };
-  }, [workoutExercises, allSets]);
+  // Derived aggregates cached on the workout row; legacy rows may not have them yet.
+  const metrics = React.useMemo(() => ({
+    exerciseCount: workout.exerciseCount ?? 0,
+    setsCount: workout.setsCount ?? 0,
+    tonnage: Math.round((workout.totalTonnage ?? 0) * 10) / 10,
+  }), [workout.exerciseCount, workout.setsCount, workout.totalTonnage]);
 
   const duration = workout.endedAt && workout.startedAt
     ? Math.round((workout.endedAt - workout.startedAt) / 1000 / 60)
@@ -120,4 +95,3 @@ export const WorkoutCard: React.FC<WorkoutCardProps> = React.memo(({ workout, on
     </Card>
   );
 });
-

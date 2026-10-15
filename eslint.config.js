@@ -20,4 +20,20 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Architectural invariant: only src/data (repositories/queries) and src/services may
+    // talk to Dexie. Components and hooks go through repositories — otherwise persistence
+    // logic, transactions and derived-field upkeep leak back into the UI.
+    files: ['src/components/**/*.{ts,tsx}', 'src/hooks/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            group: ['**/db/db', '**/db/db.ts', '../../db/*', '../../../db/*'],
+            message: 'UI must not import the Dexie database. Use a repository from src/data/repositories instead.',
+          },
+        ],
+      }],
+    },
+  },
 ])
