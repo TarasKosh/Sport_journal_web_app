@@ -574,4 +574,39 @@ describe('SyncManager.sync', () => {
     releasePull?.();
     await first;
   });
+
+  it('returns the merge report from the pulled snapshot', async () => {
+    const pushed: SyncSnapshot[] = [];
+    const provider: SyncProvider = {
+      ...noopProvider,
+      async pull() {
+        return emptySnapshot({
+          data: {
+            settings: [],
+            exercises: [
+              { uuid: 'ex-sync', name: 'Sync Press', muscleGroup: 'chest', isCustom: true, updatedAt: 10 },
+            ],
+            workouts: [],
+            workoutExercises: [
+              { uuid: 'we-sync-orphan', workoutId: 'w-missing', exerciseId: 'ex-sync', order: 0, updatedAt: 10 },
+            ],
+            sets: [],
+          },
+        });
+      },
+      async push(snapshot) {
+        pushed.push(snapshot);
+      },
+    };
+
+    const manager = new SyncManager(provider);
+    const report = await manager.sync();
+
+    // The UI relies on these counts to warn about skipped orphans after a sync.
+    expect(report.added).toBe(1);
+    expect(report.updated).toBe(0);
+    expect(report.conflicts).toBe(0);
+    expect(report.skippedOrphans).toBe(1);
+    expect(pushed).toHaveLength(1);
+  });
 });

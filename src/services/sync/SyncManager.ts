@@ -224,6 +224,11 @@ export class SyncManager {
         // The conflict log travels in every snapshot; keep it bounded.
         await ConflictRepository.pruneOlderThan();
 
+        // Skipped orphans mean data was silently dropped; make that diagnosable outside the UI.
+        if (report.skippedOrphans > 0) {
+            console.warn(`mergeSnapshot skipped ${report.skippedOrphans} orphaned row(s) whose parent record is missing`);
+        }
+
         return report;
     }
 

@@ -2,12 +2,27 @@ import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
-import { SyncManager } from '../../services/sync/SyncManager';
+import { SyncManager, type MergeReport } from '../../services/sync/SyncManager';
 import { FileSyncProvider } from '../../services/sync/FileProvider';
 import { GoogleDriveSyncProvider } from '../../services/sync/GoogleDriveProvider';
 import { ConflictRepository } from '../../data/repositories/ConflictRepository';
 import { Upload, Download, RefreshCw, Cloud, AlertTriangle } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
+
+/** Human-readable merge counts, e.g. "3 added, 5 updated, 2 conflicts resolved". */
+function formatMergeCounts(report: MergeReport): string {
+    const parts = [`${report.added} added`, `${report.updated} updated`];
+    if (report.conflicts > 0) {
+        parts.push(`${report.conflicts} conflict${report.conflicts === 1 ? '' : 's'} resolved`);
+    }
+    return parts.join(', ');
+}
+
+/** Warning sentence for rows dropped because their parent record is unknown. */
+function formatOrphanWarning(report: MergeReport): string | null {
+    if (report.skippedOrphans === 0) return null;
+    return `${report.skippedOrphans} orphaned ${report.skippedOrphans === 1 ? 'row was' : 'rows were'} skipped`;
+}
 
 export const SyncPage: React.FC = () => {
     const [status, setStatus] = useState<string>('');
@@ -41,9 +56,12 @@ export const SyncPage: React.FC = () => {
             const provider = new FileSyncProvider();
             const manager = new SyncManager(provider);
             const snapshot = await provider.importFile(file);
-            await manager.mergeSnapshot(snapshot);
-            setStatus('Import and Merge successful');
-            showToast('Data imported successfully', 'success');
+            const report = await manager.mergeSnapshot(snapshot);
+            const counts = formatMergeCounts(report);
+            const orphanWarning = formatOrphanWarning(report);
+            setStatus(`Import and Merge successful: ${counts}${orphanWarning ? ` (${orphanWarning})` : ''}`);
+            showToast(`Data imported: ${counts}`, 'success');
+            if (orphanWarning) showToast(orphanWarning, 'warning');
         } catch (e) {
             console.error(e);
             const message = e instanceof Error ? e.message : 'Import failed';
@@ -61,9 +79,12 @@ export const SyncPage: React.FC = () => {
         try {
             const provider = new GoogleDriveSyncProvider();
             const manager = new SyncManager(provider);
-            await manager.sync();
-            setStatus('Google Drive Sync Complete');
-            showToast('Google Drive sync complete', 'success');
+            const report = await manager.sync();
+            const counts = formatMergeCounts(report);
+            const orphanWarning = formatOrphanWarning(report);
+            setStatus(`Google Drive Sync Complete: ${counts}${orphanWarning ? ` (${orphanWarning})` : ''}`);
+            showToast(`Google Drive sync complete: ${counts}`, 'success');
+            if (orphanWarning) showToast(orphanWarning, 'warning');
         } catch (e: unknown) {
             console.error(e);
             const message = e instanceof Error ? e.message : String(e);
