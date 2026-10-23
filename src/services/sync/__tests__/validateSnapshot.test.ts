@@ -122,6 +122,50 @@ describe('validateSnapshot', () => {
     ).toThrow(/workoutExerciseId/);
   });
 
+  it('rejects a workoutExercise without a workoutId (referential integrity)', () => {
+    expect(() =>
+      validateSnapshot({
+        ...validSnapshot,
+        data: {
+          ...validSnapshot.data,
+          workoutExercises: [{ uuid: 'we-1', exerciseId: 'ex-1', order: 0, updatedAt: 1 }],
+        },
+      }),
+    ).toThrow(/workoutId must be a non-empty string/);
+
+    expect(() =>
+      validateSnapshot({
+        ...validSnapshot,
+        data: {
+          ...validSnapshot.data,
+          workoutExercises: [{ uuid: 'we-1', workoutId: '', exerciseId: 'ex-1', order: 0, updatedAt: 1 }],
+        },
+      }),
+    ).toThrow(/workoutId must be a non-empty string/);
+  });
+
+  it('rejects a workoutExercise without an exerciseId (referential integrity)', () => {
+    expect(() =>
+      validateSnapshot({
+        ...validSnapshot,
+        data: {
+          ...validSnapshot.data,
+          workoutExercises: [{ uuid: 'we-1', workoutId: 'w-1', order: 0, updatedAt: 1 }],
+        },
+      }),
+    ).toThrow(/exerciseId must be a non-empty string/);
+
+    expect(() =>
+      validateSnapshot({
+        ...validSnapshot,
+        data: {
+          ...validSnapshot.data,
+          workoutExercises: [{ uuid: 'we-1', workoutId: 'w-1', exerciseId: '', order: 0, updatedAt: 1 }],
+        },
+      }),
+    ).toThrow(/exerciseId must be a non-empty string/);
+  });
+
   it('rejects set with non-numeric weight', () => {
     expect(() =>
       validateSnapshot({

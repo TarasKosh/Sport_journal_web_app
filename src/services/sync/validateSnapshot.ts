@@ -80,11 +80,13 @@ function assertWorkoutEntity(item: unknown, path: string): void {
 
 function assertWorkoutExerciseEntity(item: unknown, path: string): void {
     assertTimestampedEntity(item, path);
-    if (item.workoutId !== undefined && typeof item.workoutId !== 'string') {
-        throw new Error(`Invalid snapshot: ${path}.workoutId must be a string when present.`);
+    // Required parent keys (mirrors the sets validator): a missing one would surface as an
+    // `undefined` key in the merge's anyOf lookups and be silently dropped as an orphan.
+    if (typeof item.workoutId !== 'string' || item.workoutId.length === 0) {
+        throw new Error(`Invalid snapshot: ${path}.workoutId must be a non-empty string.`);
     }
-    if (item.exerciseId !== undefined && typeof item.exerciseId !== 'string') {
-        throw new Error(`Invalid snapshot: ${path}.exerciseId must be a string when present.`);
+    if (typeof item.exerciseId !== 'string' || item.exerciseId.length === 0) {
+        throw new Error(`Invalid snapshot: ${path}.exerciseId must be a non-empty string.`);
     }
 }
 

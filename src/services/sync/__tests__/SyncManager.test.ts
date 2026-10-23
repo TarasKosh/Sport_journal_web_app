@@ -293,6 +293,86 @@ describe('SyncManager.mergeSnapshot', () => {
     expect(afterMergeA?.theme).toBe(settings?.theme);
   });
 
+  /**
+   * `catalogVersion` is device-local bookkeeping (see DERIVED_FIELDS): a winning remote
+   * settings row must not carry the remote device's value over, or `ensureCatalog()` would
+   * re-run (or skip a due run) on the next launch.
+   */
+  it('keeps the local catalogVersion when a remote settings row wins', async () => {
+    const manager = new SyncManager(noopProvider);
+    await db.settings.add({
+      massUnit: MassUnit.KG,
+      weightStep: 2.5,
+      defaultRPEType: RPEType.RPE,
+      theme: 'dark',
+      language: 'en',
+      catalogVersion: 1,
+      updatedAt: 10,
+    });
+
+    await manager.mergeSnapshot(
+      emptySnapshot({
+        data: {
+          settings: [
+            {
+              massUnit: MassUnit.LB,
+              weightStep: 5,
+              defaultRPEType: RPEType.RIR,
+              theme: 'light',
+              language: 'en',
+              catalogVersion: 0,
+              updatedAt: 50,
+            },
+          ],
+          exercises: [],
+          workouts: [],
+          workoutExercises: [],
+          sets: [],
+        },
+      }),
+    );
+
+    const settings = await db.settings.toCollection().first();
+    expect(settings?.massUnit).toBe(MassUnit.LB);
+    expect(settings?.updatedAt).toBe(50);
+    expect(settings?.catalogVersion).toBe(1);
+  });
+
+  it('adds a settings row without importing remote ids or catalog bookkeeping', async () => {
+    const manager = new SyncManager(noopProvider);
+
+    const report = await manager.mergeSnapshot(
+      emptySnapshot({
+        data: {
+          settings: [
+            {
+              id: 77,
+              massUnit: MassUnit.LB,
+              weightStep: 5,
+              defaultRPEType: RPEType.RIR,
+              theme: 'light',
+              language: 'en',
+              catalogVersion: 3,
+              updatedAt: 50,
+            },
+          ],
+          exercises: [],
+          workouts: [],
+          workoutExercises: [],
+          sets: [],
+        },
+      }),
+    );
+
+    const settings = await db.settings.toCollection().first();
+    expect(report.added).toBe(1);
+    expect(settings?.massUnit).toBe(MassUnit.LB);
+    // The local row gets its own auto-increment id, like every other merge path.
+    expect(settings?.id).not.toBe(77);
+    // This device has not applied catalog v3 itself; ensureCatalog decides on next launch.
+    expect(settings?.catalogVersion).toBeUndefined();
+  });
+
   it('logs conflict only when fields diverge', async () => {
     const manager = new SyncManager(noopProvider);
     await db.exercises.add({
@@ -464,6 +544,51 @@ describe('SyncManager.mergeSnapshot', () => {
 
     const workout = await db.workouts.where('uuid').equals('w-fresh').first();
     expect(workout?.setsCount).toBe(1);
+  });
+
+  /**
+   * Regression: the normalize context for merged sets was built only from the snapshot's
+   * workout-exercises. A set whose parent stayed behind on this device (unchanged since the
+   * previous sync, so not part of the snapshot) merged without its denormalized
+   * `exerciseId`/`workoutId`, leaving the `[exerciseId+performedAt]` index unusable.
+   */
+  it('backfills set parent keys from a workout-exercise that exists only locally', async () => {
+    await db.workouts.add({
+      uuid: 'w-localparent',
+      startedAt: 1000,
+      workoutDay: '2026-01-01',
+      endedAt: 2000,
+      status: 'finished',
+      updatedAt: 1,
+    });
+    await db.workoutExercises.add({
+      uuid: 'we-localparent',
+      workoutId: 'w-localparent',
+      exerciseId: 'ex-localparent',
+      order: 0,
+      updatedAt: 1,
+    });
+
+    const manager = new SyncManager(noopProvider);
+    const report = await manager.mergeSnapshot(
+      emptySnapshot({
+        data: {
+          settings: [],
+          exercises: [],
+          workouts: [],
+          workoutExercises: [],
+          sets: [
+            { uuid: 'set-localparent', workoutExerciseId: 'we-localparent', order: 0, weight: 100, reps: 5, isWarmup: false, isFailure: false, updatedAt: 10 },
+          ],
+        },
+      }),
+    );
+
+    expect(report.skippedOrphans).toBe(0);
+    const set = await db.sets.where('uuid').equals('set-localparent').first();
+    expect(set).toBeTruthy();
+    expect(set?.workoutId).toBe('w-localparent');
+    expect(set?.exerciseId).toBe('ex-localparent');
   });
 
   it('still skips a set whose parent workout-exercise is unknown everywhere', async () => {

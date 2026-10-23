@@ -168,6 +168,19 @@ export class SyncManager {
                 report.skippedOrphans += remoteWorkoutExercises.length - workoutExercises.length;
 
                 const parentByUuid = new Map(workoutExercises.map(row => [row.uuid, row]));
+                // A set's parent may also exist only locally (unchanged since the previous
+                // sync, so absent from this snapshot). Resolve those parents too, or the set
+                // merges without its denormalized exerciseId/workoutId and stays invisible
+                // to the [exerciseId+performedAt] index.
+                const setParentIds = [...new Set((snapshot.data.sets ?? []).map(set => set.workoutExerciseId))];
+                const missingParentIds = setParentIds.filter(id => !parentByUuid.has(id));
+                if (missingParentIds.length > 0) {
+                    const localParents = await fetchByAnyOf<WorkoutExercise>(
+                        keys => db.workoutExercises.where('uuid').anyOf(keys),
+                        missingParentIds,
+                    );
+                    for (const parent of localParents) parentByUuid.set(parent.uuid, parent);
+                }
                 const remoteSets = (snapshot.data.sets ?? []).map(set =>
                     normalizeSet(set, { workoutExercise: parentByUuid.get(set.workoutExerciseId) }),
                 );
@@ -238,7 +251,16 @@ export class SyncManager {
 
         const local = await db.settings.toCollection().first();
         if (!local) {
-            await db.settings.add({ ...remote, updatedAt: remote.updatedAt ?? nowMonotonic() });
+            // No local row yet: strip the remote id (auto-increment assigns our own, like every
+            // other merge path) and the remote catalogVersion — this device has not applied any
+            // catalog itself, so `ensureCatalog` must decide on the next launch.
+            const { id: _remoteId, catalogVersion: _remoteCatalogVersion, ...remoteFields } = remote;
+            void _remoteId;
+            void _remoteCatalogVersion;
+            await db.settings.add({
+                ...remoteFields,
+                updatedAt: remote.updatedAt ?? nowMonotonic(),
+            });
             report.added += 1;
             return;
         }
@@ -257,9 +279,16 @@ export class SyncManager {
             report.conflicts += 1;
         }
 
+        // The remote payload won LWW, but `catalogVersion` is device-local bookkeeping
+        // (see DERIVED_FIELDS): keeping the local value stops a stale remote value from
+        // making `ensureCatalog` re-run (or skip a due run) on the next launch.
+        const { id: _remoteId, catalogVersion: _remoteCatalogVersion, ...remoteFields } = remote;
+        void _remoteId;
+        void _remoteCatalogVersion;
         await db.settings.put({
-            ...remote,
-            id: local.id ?? remote.id ?? 1,
+            ...remoteFields,
+            id: local.id ?? 1,
+            catalogVersion: local.catalogVersion,
             updatedAt: remoteUpdated,
         });
         report.updated += 1;
@@ -303,55 +332,55 @@ export class SyncManager {
         const remoteByUuid = new Map(remoteRecords.map(record => [record.uuid, record]));
         const applied: T[] = [];
 
-        for (const uuids of chunk([...remoteByUuid.keys()])) {
-            const localRows = await table.where('uuid').anyOf(uuids).toArray();
-            const localByUuid = new Map(localRows.map(row => [row.uuid, row]));
-            const toPut: T[] = [];
-            const conflicts: ConflictLog[] = [];
+        // Chunked local lookup via the shared helper (a giant `anyOf` degrades IndexedDB).
+        const localRows = await fetchByAnyOf<T>(
+            keys => table.where('uuid').anyOf(keys),
+            [...remoteByUuid.keys()],
+        );
+        const localByUuid = new Map(localRows.map(row => [row.uuid, row]));
+        const toPut: T[] = [];
+        const conflicts: ConflictLog[] = [];
 
-            for (const uuid of uuids) {
-                const remoteRaw = remoteByUuid.get(uuid);
-                if (!remoteRaw) continue;
-                const remote = normalize(remoteRaw);
-                const localRaw = localByUuid.get(uuid);
-                const local = localRaw ? normalize(localRaw) : undefined;
+        for (const [uuid, remoteRaw] of remoteByUuid) {
+            const remote = normalize(remoteRaw);
+            const localRaw = localByUuid.get(uuid);
+            const local = localRaw ? normalize(localRaw) : undefined;
 
-                if (!local) {
-                    const { id: _remoteId, ...rest } = remote as T & { id?: number };
-                    void _remoteId;
-                    const inserted = rest as T;
-                    toPut.push(inserted);
-                    applied.push(inserted);
-                    report.added += 1;
-                    continue;
-                }
-
-                const decision = decideWinner(local, remote);
-                if (decision.diverged) {
-                    conflicts.push({
-                        uuid: uuidv4(),
-                        entityType,
-                        entityId: remote.uuid,
-                        localUpdatedAt: local.updatedAt,
-                        remoteUpdatedAt: remote.updatedAt,
-                        resolvedAt: nowMonotonic(),
-                        resolution: decision.winner,
-                        snapshot: { local: localRaw, remote: remoteRaw } as unknown as Record<string, unknown>,
-                    });
-                    report.conflicts += 1;
-                }
-
-                if (decision.winner === 'remote') {
-                    const merged = { ...remote, id: localRaw?.id };
-                    toPut.push(merged);
-                    applied.push(merged);
-                    report.updated += 1;
-                }
+            if (!local) {
+                const { id: _remoteId, ...rest } = remote as T & { id?: number };
+                void _remoteId;
+                const inserted = rest as T;
+                toPut.push(inserted);
+                applied.push(inserted);
+                report.added += 1;
+                continue;
             }
 
-            if (toPut.length > 0) await table.bulkPut(toPut);
-            if (conflicts.length > 0) await db.conflictLog.bulkAdd(conflicts);
+            const decision = decideWinner(local, remote);
+            if (decision.diverged) {
+                conflicts.push({
+                    uuid: uuidv4(),
+                    entityType,
+                    entityId: remote.uuid,
+                    localUpdatedAt: local.updatedAt,
+                    remoteUpdatedAt: remote.updatedAt,
+                    resolvedAt: nowMonotonic(),
+                    resolution: decision.winner,
+                    snapshot: { local: localRaw, remote: remoteRaw } as unknown as Record<string, unknown>,
+                });
+                report.conflicts += 1;
+            }
+
+            if (decision.winner === 'remote') {
+                const merged = { ...remote, id: localRaw?.id };
+                toPut.push(merged);
+                applied.push(merged);
+                report.updated += 1;
+            }
         }
+
+        if (toPut.length > 0) await table.bulkPut(toPut);
+        if (conflicts.length > 0) await db.conflictLog.bulkAdd(conflicts);
 
         return applied;
     }
@@ -360,26 +389,25 @@ export class SyncManager {
         if (remoteRecords.length === 0) return;
 
         const remoteByUuid = new Map(remoteRecords.map(record => [record.uuid, record]));
-        for (const uuids of chunk([...remoteByUuid.keys()])) {
-            const localRows = await db.conflictLog.where('uuid').anyOf(uuids).toArray();
-            const localByUuid = new Map(localRows.map(row => [row.uuid, row]));
-            const toPut: ConflictLog[] = [];
+        const localRows = await fetchByAnyOf<ConflictLog>(
+            keys => db.conflictLog.where('uuid').anyOf(keys),
+            [...remoteByUuid.keys()],
+        );
+        const localByUuid = new Map(localRows.map(row => [row.uuid, row]));
+        const toPut: ConflictLog[] = [];
 
-            for (const uuid of uuids) {
-                const remote = remoteByUuid.get(uuid);
-                if (!remote) continue;
-                const local = localByUuid.get(uuid);
-                if (!local) {
-                    const { id: _remoteId, ...rest } = remote;
-                    void _remoteId;
-                    toPut.push(rest as ConflictLog);
-                    continue;
-                }
-                toPut.push({ ...remote, id: local.id });
+        for (const [uuid, remote] of remoteByUuid) {
+            const local = localByUuid.get(uuid);
+            if (!local) {
+                const { id: _remoteId, ...rest } = remote;
+                void _remoteId;
+                toPut.push(rest as ConflictLog);
+                continue;
             }
-
-            if (toPut.length > 0) await db.conflictLog.bulkPut(toPut);
+            toPut.push({ ...remote, id: local.id });
         }
+
+        if (toPut.length > 0) await db.conflictLog.bulkPut(toPut);
     }
 
     async sync(): Promise<MergeReport> {
@@ -399,12 +427,4 @@ export class SyncManager {
             return report;
         });
     }
-}
-
-function chunk(keys: string[], size = 200): string[][] {
-    const chunks: string[][] = [];
-    for (let index = 0; index < keys.length; index += size) {
-        chunks.push(keys.slice(index, index + size));
-    }
-    return chunks;
 }
