@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../../db/db';
 import { SyncManager } from '../SyncManager';
-import type { SyncProvider, SyncSnapshot } from '../types';
+import { RemoteSnapshotChangedError, type SyncProvider, type SyncSnapshot } from '../types';
 import { SCHEMA_VERSION } from '../validateSnapshot';
 import { MassUnit, RPEType } from '../../../types';
 
@@ -733,5 +733,40 @@ describe('SyncManager.sync', () => {
     expect(report.conflicts).toBe(0);
     expect(report.skippedOrphans).toBe(1);
     expect(pushed).toHaveLength(1);
+  });
+
+  /**
+   * Lost-update guard: when push() reports the remote snapshot changed since pull
+   * (RemoteSnapshotChangedError), sync() must surface that error instead of swallowing
+   * it — but the merge from the same run stays committed, so nothing merged or edited
+   * locally is lost and the next sync re-merges over the newer remote snapshot.
+   */
+  it('propagates a changed-remote-snapshot push error and keeps the merge committed', async () => {
+    const provider: SyncProvider = {
+      ...noopProvider,
+      async pull() {
+        return emptySnapshot({
+          data: {
+            settings: [],
+            exercises: [
+              { uuid: 'ex-guard', name: 'Guard Press', muscleGroup: 'chest', isCustom: true, updatedAt: 10 },
+            ],
+            workouts: [],
+            workoutExercises: [],
+            sets: [],
+          },
+        });
+      },
+      async push() {
+        throw new RemoteSnapshotChangedError();
+      },
+    };
+
+    const manager = new SyncManager(provider);
+    await expect(manager.sync()).rejects.toThrow(RemoteSnapshotChangedError);
+    await expect(manager.sync()).rejects.toThrow(/run sync again to pick up the latest data/);
+
+    const merged = await db.exercises.where('uuid').equals('ex-guard').first();
+    expect(merged?.name).toBe('Guard Press');
   });
 });
