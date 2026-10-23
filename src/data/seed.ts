@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { AppDatabase } from '../db/db';
 import type { Exercise, Settings, WorkoutTemplate } from '../types';
 import { MassUnit, RPEType } from '../types';
+import { nowMonotonic } from './clock';
 
 /**
  * Built-in catalog.
@@ -48,7 +49,7 @@ const DEFAULT_TEMPLATES: Array<Pick<WorkoutTemplate, 'name' | 'description'> & {
     },
 ];
 
-export function defaultSettings(now = Date.now()): Settings {
+export function defaultSettings(now = nowMonotonic()): Settings {
     return {
         massUnit: MassUnit.KG,
         weightStep: 2.5,
@@ -65,7 +66,7 @@ export function defaultSettings(now = Date.now()): Settings {
  * untouched so user edits and custom exercises are never clobbered.
  */
 export async function seedDefaults(database: AppDatabase): Promise<void> {
-    const now = Date.now();
+    const now = nowMonotonic();
 
     await database.settings.add(defaultSettings(now));
 
@@ -108,7 +109,7 @@ export async function ensureCatalog(database: AppDatabase): Promise<void> {
         return;
     }
 
-    const now = Date.now();
+    const now = nowMonotonic();
     await database.transaction('rw', [database.settings, database.exercises, database.workoutTemplates], async () => {
         const existingExercises = await database.exercises.toArray();
         const knownNames = new Set(existingExercises.map(exercise => exercise.name));

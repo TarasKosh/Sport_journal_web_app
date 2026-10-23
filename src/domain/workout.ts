@@ -21,6 +21,15 @@ export type WorkoutAggregates = {
     totalTonnage: number;
 };
 
+/**
+ * Tonnage is stored with 3 decimals. Every code path that writes a tonnage value into the
+ * aggregate cache must round through here, so incrementally applied deltas and full
+ * recounts agree bit-for-bit (raw float sums drift in the last decimals).
+ */
+export function roundTonnage(value: number): number {
+    return Math.round(value * 1000) / 1000;
+}
+
 /** Aggregates over an already filtered list of active sets. */
 export function summarizeSets(sets: Array<Pick<SetEntry, 'weight' | 'reps'>>): WorkoutAggregates {
     let setsCount = 0;
@@ -29,7 +38,7 @@ export function summarizeSets(sets: Array<Pick<SetEntry, 'weight' | 'reps'>>): W
         setsCount += 1;
         totalTonnage += tonnageOf(set);
     }
-    return { setsCount, totalTonnage: Math.round(totalTonnage * 1000) / 1000 };
+    return { setsCount, totalTonnage: roundTonnage(totalTonnage) };
 }
 
 /** Next free `order` value for a collection of ordered siblings. */

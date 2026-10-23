@@ -116,6 +116,23 @@ describe('contentSignature', () => {
       .not.toBe(contentSignature({ uuid: 'w-1', title: 'Pull' }));
   });
 
+  /**
+   * Regression: `workoutDay` is derived from `startedAt` in local time, so two devices in
+   * different timezones normalize the same legacy row to different day strings. If that
+   * difference counted as content divergence, every first sync logged a spurious conflict.
+   */
+  it('ignores workoutDay differences between otherwise equal records', () => {
+    const localMidnight = {
+      uuid: 'w-1',
+      startedAt: 123,
+      endedAt: 456,
+      updatedAt: 1,
+      workoutDay: '2026-01-02',
+    };
+    const otherTimezone = { ...localMidnight, workoutDay: '2026-01-01' };
+    expect(contentSignature(localMidnight)).toBe(contentSignature(otherTimezone));
+  });
+
   it('is key-order independent', () => {
     expect(contentSignature({ a: 1, b: 2 })).toBe(contentSignature({ b: 2, a: 1 }));
   });

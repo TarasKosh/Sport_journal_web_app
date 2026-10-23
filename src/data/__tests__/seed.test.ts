@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../db/db';
 import { CATALOG_VERSION, DEFAULT_EXERCISES, ensureCatalog, seedDefaults } from '../seed';
+import { nowMonotonic, resetMonotonicClock } from '../clock';
 import { resetTestDatabase } from '../../test-utils/db';
 
 describe('seedDefaults', () => {
@@ -75,5 +76,71 @@ describe('ensureCatalog', () => {
     await ensureCatalog(db);
 
     expect(await db.exercises.count()).toBe(before);
+  });
+});
+
+/**
+ * Regression: seeding used `Date.now()` directly, so a device whose clock was corrected
+ * backwards stamped freshly seeded rows with timestamps that lose to older remote rows
+ * under LWW. Seeded `updatedAt` must come from the monotonic clock.
+ */
+describe('seed timestamps', () => {
+  beforeEach(async () => {
+    resetMonotonicClock();
+    await resetTestDatabase();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    resetMonotonicClock();
+  });
+
+  it('seedDefaults stamps rows no older than a previously issued monotonic timestamp', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    const before = nowMonotonic(); // 1000
+
+    vi.spyOn(Date, 'now').mockReturnValue(500); // wall clock jumps back
+    await seedDefaults(db);
+
+    const settings = await db.settings.toCollection().first();
+    const exercises = await db.exercises.toArray();
+    const templates = await db.workoutTemplates.toArray();
+    for (const row of [settings, ...exercises, ...templates]) {
+      expect(row!.updatedAt).toBeGreaterThanOrEqual(before);
+    }
+  });
+
+  it('ensureCatalog stamps upserted rows no older than a previously issued monotonic timestamp', async () => {
+    const existing = DEFAULT_EXERCISES[0];
+    await db.exercises.add({
+      uuid: 'ex-existing',
+      name: existing.name,
+      muscleGroup: existing.muscleGroup,
+      isCustom: false,
+      updatedAt: 1,
+    });
+    await db.settings.add({
+      massUnit: 'kg',
+      weightStep: 2.5,
+      defaultRPEType: 'rpe',
+      theme: 'dark',
+      language: 'en',
+      catalogVersion: 0,
+      updatedAt: 1,
+    });
+
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    const before = nowMonotonic(); // 1000
+
+    vi.spyOn(Date, 'now').mockReturnValue(500); // wall clock jumps back
+    await ensureCatalog(db);
+
+    const settings = await db.settings.toCollection().first();
+    expect(settings!.updatedAt).toBeGreaterThanOrEqual(before);
+    const added = await db.exercises.where('uuid').notEqual('ex-existing').toArray();
+    expect(added.length).toBe(DEFAULT_EXERCISES.length - 1);
+    for (const exercise of added) {
+      expect(exercise.updatedAt).toBeGreaterThanOrEqual(before);
+    }
   });
 });

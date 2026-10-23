@@ -1,5 +1,6 @@
 import type { Exercise, SetEntry, Workout, WorkoutExercise, WorkoutTemplate } from '../types';
 import { dayStringFromTimestamp, deriveStatus } from '../domain/workout';
+import { nowMonotonic } from './clock';
 
 /**
  * Single source of truth for derived/denormalized fields.
@@ -14,7 +15,11 @@ function finiteOr(value: unknown, fallback: number): number {
 }
 
 export function normalizeWorkout(workout: Workout): Workout {
-    const startedAt = finiteOr(workout.startedAt, Date.now());
+    // Corrupt-row fallback (DB upgrade / hand-edited import). Must come from the monotonic
+    // clock so LWW never regresses; evaluated lazily because this runs on every merged row.
+    const startedAt = typeof workout.startedAt === 'number' && Number.isFinite(workout.startedAt)
+        ? workout.startedAt
+        : nowMonotonic();
     return {
         ...workout,
         startedAt,
@@ -78,6 +83,9 @@ export const DERIVED_FIELDS = [
     // legitimately different per device, so it must not look like a user-visible conflict.
     'catalogVersion',
     'status',
+    // Derived from `startedAt` in local time: two devices in different timezones derive
+    // different day strings for the same legacy row, which must not read as divergence.
+    'workoutDay',
     'setsCount',
     'totalTonnage',
     'exerciseCount',

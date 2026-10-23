@@ -149,6 +149,12 @@ export class AppDatabase extends Dexie {
             const setsByWorkout = new Map<string, SetEntry[]>();
             for (const set of await setTable.toArray()) {
                 if (set.deletedAt != null || !set.workoutId) continue;
+                // Match `recountWorkout` (src/data/aggregates.ts): a set only counts toward
+                // its workout's aggregates while its workout-exercise parent exists and is
+                // not soft-deleted, otherwise the backfilled cache disagrees with the first
+                // later recount.
+                const parent = workoutExerciseByUuid.get(set.workoutExerciseId);
+                if (parent == null || parent.deletedAt != null) continue;
                 const list = setsByWorkout.get(set.workoutId);
                 if (list) list.push(set);
                 else setsByWorkout.set(set.workoutId, [set]);

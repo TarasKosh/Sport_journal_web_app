@@ -1,7 +1,7 @@
 import type { Workout } from '../types';
 import { db } from '../db/db';
 import { onlyActive } from '../utils/entityFilters';
-import { summarizeSets } from '../domain/workout';
+import { roundTonnage, summarizeSets } from '../domain/workout';
 
 /**
  * Workout aggregates (`setsCount`, `totalTonnage`, `exerciseCount`) are a derived cache.
@@ -28,7 +28,8 @@ export async function applyAggregateDelta(workoutUuid: string, delta: AggregateD
         .modify((workout: Workout) => {
             if (delta.setsCount) workout.setsCount = Math.max(0, (workout.setsCount ?? 0) + delta.setsCount);
             if (delta.totalTonnage) {
-                const next = (workout.totalTonnage ?? 0) + delta.totalTonnage;
+                // Round like `summarizeSets` so accumulated deltas never drift from a recount.
+                const next = roundTonnage((workout.totalTonnage ?? 0) + delta.totalTonnage);
                 workout.totalTonnage = next > 0 ? next : 0;
             }
             if (delta.exerciseCount) {
