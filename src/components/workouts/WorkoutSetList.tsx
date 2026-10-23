@@ -28,6 +28,16 @@ export const SetList: React.FC<SetListProps> = React.memo(({
     onMove,
 }) => {
     const [trackSides, setTrackSides] = React.useState(exercise?.isUnilateral || false);
+    // Whether the user has toggled the L/R switch themselves — an explicit choice must
+    // survive a late-arriving exercise re-applying its default below.
+    const trackSidesTouched = React.useRef(false);
+    // `exercise` resolves after the first render when `useExerciseIndex` is still loading,
+    // so the state initializer alone would miss the unilateral default. Re-apply it when
+    // the exercise (or its flag) changes, unless the user already chose.
+    React.useEffect(() => {
+        if (trackSidesTouched.current) return;
+        setTrackSides(exercise?.isUnilateral || false);
+    }, [exercise?.uuid, exercise?.isUnilateral]);
     const [showAddVariation, setShowAddVariation] = React.useState(false);
     const [newVariation, setNewVariation] = React.useState('');
     const variations = React.useMemo(() => exercise?.variations || [], [exercise?.variations]);
@@ -127,7 +137,10 @@ export const SetList: React.FC<SetListProps> = React.memo(({
                     <div className="h-4 w-px bg-border/40 mx-1" />
 
                     <button
-                        onClick={() => setTrackSides(!trackSides)}
+                        onClick={() => {
+                            trackSidesTouched.current = true;
+                            setTrackSides(!trackSides);
+                        }}
                         className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all border ${trackSides
                             ? 'bg-accent text-white border-accent shadow-sm shadow-accent/20'
                             : 'bg-bg-tertiary text-text-secondary border-border/40 hover:border-accent/40'

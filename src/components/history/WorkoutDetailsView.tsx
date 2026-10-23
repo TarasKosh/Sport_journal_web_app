@@ -45,12 +45,16 @@ export const WorkoutDetailsView: React.FC<WorkoutDetailsViewProps> = ({ workout,
     [workout.uuid],
   );
 
-  // Expand all exercises by default when loaded
+  // Expand all exercises by default when loaded. Live queries re-emit with a fresh array
+  // identity on every write, so depend on the joined uuid list (sorted — a reorder keeps
+  // the same set of exercises) rather than the array itself, or a user-collapsed section
+  // would snap open again after an unrelated re-emission.
+  const exerciseUuidKey = workoutExercises?.map(we => we.uuid).sort().join('|') ?? '';
   React.useEffect(() => {
-    if (workoutExercises && workoutExercises.length > 0) {
-      setExpandedExercises(new Set(workoutExercises.map(we => we.uuid)));
+    if (exerciseUuidKey) {
+      setExpandedExercises(new Set(exerciseUuidKey.split('|')));
     }
-  }, [workoutExercises]);
+  }, [exerciseUuidKey]);
 
   // Shared uuid -> exercise lookup (includes soft-deleted exercises so history still
   // resolves exercise names) - one live query for the whole view.

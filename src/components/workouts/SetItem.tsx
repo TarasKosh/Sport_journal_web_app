@@ -376,8 +376,8 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
                     <InputWithButtons
                         value={draft.intensity}
                         onChange={value => patchDraft({ intensity: value })}
-                        onIncrement={() => patchDraft({ intensity: draft.intensity ? Math.min(10, Number(draft.intensity) + 0.5).toString() : useRir ? '2' : '8' }, true)}
-                        onDecrement={() => patchDraft({ intensity: draft.intensity ? Math.max(0, Number(draft.intensity) - 0.5).toString() : useRir ? '2' : '8' }, true)}
+                        onIncrement={() => patchDraft({ intensity: draftRef.current.intensity ? Math.min(10, Number(draftRef.current.intensity) + 0.5).toString() : useRir ? '2' : '8' }, true)}
+                        onDecrement={() => patchDraft({ intensity: draftRef.current.intensity ? Math.max(0, Number(draftRef.current.intensity) - 0.5).toString() : useRir ? '2' : '8' }, true)}
                         onBlur={writer.flush}
                         placeholder="-"
                     />
@@ -412,8 +412,8 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
                         <InputWithButtons
                             value={draft.failureRep}
                             onChange={value => patchDraft({ failureRep: value })}
-                            onIncrement={() => patchDraft({ failureRep: String((Number(draft.failureRep) || 0) + 1) }, true)}
-                            onDecrement={() => patchDraft({ failureRep: String(Math.max(0, (Number(draft.failureRep) || 0) - 1)) }, true)}
+                            onIncrement={() => patchDraft({ failureRep: String((Number(draftRef.current.failureRep) || 0) + 1) }, true)}
+                            onDecrement={() => patchDraft({ failureRep: String(Math.max(0, (Number(draftRef.current.failureRep) || 0) - 1)) }, true)}
                             onBlur={writer.flush}
                             isDanger={true}
                         />

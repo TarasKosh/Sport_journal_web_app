@@ -58,12 +58,16 @@ export function useDebouncedWriter<T>(
     }, [delay]);
 
     useEffect(() => {
-        const handleHide = () => flush();
-        document.addEventListener('visibilitychange', handleHide);
-        window.addEventListener('pagehide', handleHide);
+        // The event also fires when the tab becomes visible again — flushing then would
+        // cut the debounce short, so only persist while the page is actually hidden.
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') flush();
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('pagehide', flush);
         return () => {
-            document.removeEventListener('visibilitychange', handleHide);
-            window.removeEventListener('pagehide', handleHide);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('pagehide', flush);
             // Unmount flush: never drop the user's last keystrokes.
             flush();
         };

@@ -53,6 +53,7 @@ describe('useDebouncedWriter', () => {
   it('flushes on tab hide', () => {
     const persist = vi.fn();
     const { result } = renderHook(() => useDebouncedWriter<string>(persist, 1_000));
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
 
     act(() => {
       result.current.schedule('backgrounded');
@@ -60,6 +61,20 @@ describe('useDebouncedWriter', () => {
     });
 
     expect(persist).toHaveBeenCalledWith('backgrounded');
+  });
+
+  it('does not flush when the tab becomes visible again', () => {
+    const persist = vi.fn();
+    const { result } = renderHook(() => useDebouncedWriter<string>(persist, 1_000));
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+
+    act(() => {
+      result.current.schedule('still-debouncing');
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // Becoming visible must not cut the debounce short; the timer still saves the value.
+    expect(persist).not.toHaveBeenCalled();
   });
 
   it('does not persist when nothing is pending', () => {
