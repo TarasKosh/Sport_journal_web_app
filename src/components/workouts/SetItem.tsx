@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import type { SetEntry } from '../../types';
+import React, { useState } from 'react';
+import type { MassUnit, SetEntry } from '../../types';
 import { RPEType } from '../../types';
-import { db } from '../../db/db';
 import { Trash2, CornerDownRight, Minus, Plus } from 'lucide-react';
 import clsx from 'clsx';
-import { useDebounce } from '../../hooks/useDebounce';
-import { softDeleteSet } from '../../services/data/softDelete';
+import { useDebouncedWriter } from '../../hooks/useDebouncedWriter';
+import { SetRepository } from '../../data/repositories/SetRepository';
 import { useSettings } from '../../hooks/useSettings';
 import { displayToKg, kgToDisplay, massUnitLabel } from '../../utils/mass';
 
@@ -17,6 +16,25 @@ interface SetItemProps {
     onAddVariation?: () => void;
 }
 
+type Draft = {
+    weight: string;
+    reps: string;
+    intensity: string;
+    failureRep: string;
+};
+
+const DRAFT_KEYS: Array<keyof Draft> = ['weight', 'reps', 'intensity', 'failureRep'];
+
+/** Display strings for a stored set — the single place that converts kg → display unit. */
+function draftFromEntry(entry: SetEntry, massUnit: MassUnit, useRir: boolean): Draft {
+    return {
+        weight: kgToDisplay(entry.weight, massUnit).toString(),
+        reps: entry.reps.toString(),
+        intensity: useRir ? (entry.rir?.toString() ?? '') : (entry.rpe?.toString() ?? ''),
+        failureRep: entry.failureRep?.toString() ?? entry.reps.toString(),
+    };
+}
+
 // Defined outside SetItem so React keeps a stable component identity across re-renders,
 // preventing input focus loss when parent state changes.
 const InputWithButtons = ({
@@ -24,6 +42,7 @@ const InputWithButtons = ({
     onChange,
     onIncrement,
     onDecrement,
+    onBlur,
     placeholder = "0",
     isDanger = false
 }: {
@@ -31,6 +50,7 @@ const InputWithButtons = ({
     onChange: (val: string) => void;
     onIncrement: () => void;
     onDecrement: () => void;
+    onBlur?: () => void;
     placeholder?: string;
     isDanger?: boolean;
 }) => (
@@ -44,6 +64,7 @@ const InputWithButtons = ({
             value={value}
             onChange={e => onChange(e.target.value)}
             onFocus={e => e.target.select()}
+            onBlur={onBlur}
             className={clsx(
                 "flex-1 bg-transparent text-center text-2xl font-bold outline-none px-2 hide-number-arrows min-w-0 pointer-events-auto",
                 isDanger ? "text-danger placeholder:text-danger/30" : "text-text-primary placeholder:text-text-tertiary/30"
@@ -82,89 +103,137 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
     const rpeType = settings.defaultRPEType || RPEType.RPE;
     const useRir = rpeType === RPEType.RIR;
 
-    const [weight, setWeight] = useState(() => kgToDisplay(entry.weight, massUnit).toString());
-    const [reps, setReps] = useState(entry.reps.toString());
-    const [rpe, setRpe] = useState(
-        useRir ? (entry.rir?.toString() || '') : (entry.rpe?.toString() || ''),
-    );
+    const [draft, setDraftState] = useState<Draft>(() => draftFromEntry(entry, massUnit, useRir));
+    const draftRef = React.useRef(draft);
+    // The draft exactly as derived from the stored row, before any user edit (see resync below).
+    const [baseDraft, setBaseDraft] = useState<Draft>(() => draftFromEntry(entry, massUnit, useRir));
     const [variation, setVariation] = useState(entry.variation || '');
     const [side, setSide] = useState<'left' | 'right' | undefined>(entry.side);
     const [isFailure, setIsFailure] = useState(entry.isFailure);
-    const [failureRep, setFailureRep] = useState(entry.failureRep?.toString() || entry.reps.toString());
 
-    // Reset variation when entry.variation prop changes (state-during-render pattern)
-    const [prevVariation, setPrevVariation] = useState(entry.variation);
-    if (entry.variation !== prevVariation) {
-        setPrevVariation(entry.variation);
-        setVariation(entry.variation || '');
-    }
+    /**
+     * Writes only the fields that actually changed.
+     * Persistence is debounced for typing, flushed on blur/unmount/tab-hide, and immediate
+     * for discrete actions (steppers, toggles) so nothing is lost when leaving the screen.
+     */
+    const persist = (values: Draft) => {
+        const id = entry.id;
+        if (id == null) return;
 
-    // Sync display weight when unit or stored weight changes
-    const [prevWeightKey, setPrevWeightKey] = useState(`${entry.weight}|${massUnit}`);
-    const weightKey = `${entry.weight}|${massUnit}`;
-    if (weightKey !== prevWeightKey) {
-        setPrevWeightKey(weightKey);
-        setWeight(kgToDisplay(entry.weight, massUnit).toString());
-    }
+        const patch: Partial<SetEntry> = {};
+        const weightKg = displayToKg(Number(values.weight) || 0, massUnit);
+        const reps = Number(values.reps) || 0;
+        const intensity = values.intensity === '' ? undefined : Number(values.intensity);
+        const failureRep = isFailure ? Number(values.failureRep) || 0 : undefined;
 
-    // Resync intensity field when RPE/RIR preference or stored values change
-    const intensityKey = `${useRir}|${entry.rpe ?? ''}|${entry.rir ?? ''}`;
-    const [prevIntensityKey, setPrevIntensityKey] = useState(intensityKey);
-    if (intensityKey !== prevIntensityKey) {
-        setPrevIntensityKey(intensityKey);
-        setRpe(useRir ? (entry.rir?.toString() || '') : (entry.rpe?.toString() || ''));
-    }
-
-    const debouncedWeight = useDebounce(weight, 500);
-    const debouncedReps = useDebounce(reps, 500);
-    const debouncedRpe = useDebounce(rpe, 500);
-    const debouncedFailureRep = useDebounce(failureRep, 500);
-
-    useEffect(() => {
-        const weightKg = displayToKg(Number(debouncedWeight) || 0, massUnit);
-        const intensity = debouncedRpe === '' ? undefined : Number(debouncedRpe);
+        if (weightKg !== entry.weight) patch.weight = weightKg;
+        if (reps !== entry.reps) patch.reps = reps;
         const storedIntensity = useRir ? entry.rir : entry.rpe;
-
-        if (weightKg === entry.weight &&
-            Number(debouncedReps) === entry.reps &&
-            intensity === storedIntensity &&
-            (isFailure ? Number(debouncedFailureRep) : undefined) === entry.failureRep) {
-            return;
+        if (intensity !== storedIntensity) {
+            if (useRir) patch.rir = intensity;
+            else patch.rpe = intensity;
         }
+        if (failureRep !== entry.failureRep) patch.failureRep = failureRep;
 
-        db.sets.update(entry.id!, {
-            weight: weightKg,
-            reps: Number(debouncedReps),
-            ...(useRir
-                ? { rir: intensity, rpe: entry.rpe }
-                : { rpe: intensity, rir: entry.rir }),
-            failureRep: isFailure ? Number(debouncedFailureRep) : undefined,
-            updatedAt: Date.now()
-        }).catch(console.error);
-    }, [debouncedWeight, debouncedReps, debouncedRpe, debouncedFailureRep, isFailure, entry.id, entry.weight, entry.reps, entry.rpe, entry.rir, entry.failureRep, massUnit, useRir]);
+        if (Object.keys(patch).length === 0) return;
+        void SetRepository.update(id, patch).catch(error => console.error('Failed to save set', error));
+    };
+
+    const writer = useDebouncedWriter<Draft>(persist, 500);
+
+    const applyDraft = (next: Draft, immediate = false) => {
+        draftRef.current = next;
+        setDraftState(next);
+        writer.schedule(next);
+        if (immediate) writer.flush();
+    };
+
+    const patchDraft = (partial: Partial<Draft>, immediate = false) => {
+        applyDraft({ ...draftRef.current, ...partial }, immediate);
+    };
+
+    // Re-derive the display strings when the stored row or the unit/RPE preference changes
+    // (e.g. a sync merge or a settings change). Documented "adjust state during render" pattern.
+    // Un-persisted user edits must survive an entry re-emission: the row often re-emits
+    // because a sibling field (failure toggle, side, variation) was written immediately
+    // while a typed value is still inside the 500 ms debounce. Fields whose pending draft
+    // differs from the last stored-derived base are user intent and are merged over the
+    // fresh base; preference changes carry no pending intent (the strings are in the old
+    // unit/scale) and re-derive cleanly.
+    const resyncKey = `${entry.weight}|${entry.reps}|${entry.rpe ?? ''}|${entry.rir ?? ''}|${entry.failureRep ?? ''}|${massUnit}|${useRir}`;
+    const prefKey = `${massUnit}|${useRir}`;
+    const [prevResyncKey, setPrevResyncKey] = useState(resyncKey);
+    const [prevPrefKey, setPrevPrefKey] = useState(prefKey);
+    if (resyncKey !== prevResyncKey) {
+        setPrevResyncKey(resyncKey);
+        setPrevPrefKey(prefKey);
+        const base = draftFromEntry(entry, massUnit, useRir);
+        const pending = prefKey === prevPrefKey ? writer.pending() : undefined;
+        let next = base;
+        if (pending) {
+            // baseDraft still holds the previous stored-derived base here: it is only
+            // updated inside this branch, after the intent comparison.
+            next = { ...base };
+            for (const key of DRAFT_KEYS) {
+                if (pending[key] !== baseDraft[key]) next[key] = pending[key];
+            }
+        }
+        setDraftState(next);
+        setBaseDraft(base);
+    }
+
+    // Keep the event-handler mirror in sync with the committed state (refs are never
+    // written during render).
+    React.useEffect(() => {
+        draftRef.current = draft;
+    }, [draft]);
 
     const toggleFailure = () => {
-        const newVal = !isFailure;
-        setIsFailure(newVal);
-        if (newVal && !failureRep) {
-            setFailureRep(reps);
+        const id = entry.id;
+        if (id == null) return;
+        const next = !isFailure;
+        setIsFailure(next);
+
+        let nextFailureRep = draftRef.current.failureRep;
+        if (next && !nextFailureRep) {
+            nextFailureRep = draftRef.current.reps;
+            patchDraft({ failureRep: nextFailureRep });
         }
-        db.sets.update(entry.id!, {
-            isFailure: newVal,
-            failureRep: newVal ? Number(failureRep || reps) : undefined,
-            updatedAt: Date.now()
-        });
+
+        void SetRepository.update(id, {
+            isFailure: next,
+            failureRep: next ? Number(nextFailureRep || draftRef.current.reps) || 0 : undefined,
+        }).catch(error => console.error('Failed to update failure flag', error));
     };
 
     const handleDelete = async () => {
         if (entry.id != null) {
-            await softDeleteSet(entry.id);
+            await SetRepository.softDelete(entry.id);
         }
     };
 
+    const applyVariation = (next: string | undefined) => {
+        setVariation(next ?? '');
+        if (entry.id == null) return;
+        void SetRepository.update(entry.id, { variation: next })
+            .catch(error => console.error('Failed to save variation', error));
+    };
+
+    const applySide = (next: 'left' | 'right') => {
+        if (side === next || entry.id == null) return;
+        setSide(next);
+        void SetRepository.update(entry.id, { side: next })
+            .catch(error => console.error('Failed to save side', error));
+    };
+
     const stepWeight = (delta: number) => {
-        const current = Number(weight) || 0;
-        setWeight(String(Math.max(0, Math.round((current + delta) * 100) / 100)));
+        const current = Number(draftRef.current.weight) || 0;
+        patchDraft({ weight: String(Math.max(0, Math.round((current + delta) * 100) / 100)) }, true);
+    };
+
+    const stepReps = (delta: number) => {
+        const current = Number(draftRef.current.reps) || 0;
+        patchDraft({ reps: String(Math.max(0, current + delta)) }, true);
     };
 
     const activeRowClass = isFailure ? "rounded border-l-4 border-l-danger" : "hover:bg-bg-secondary/30 rounded border-l-4 border-l-transparent";
@@ -193,12 +262,7 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
                     {isUnilateral && (
                         <div className="flex gap-0.5 bg-bg-tertiary rounded-lg p-0.5 border border-border/40">
                             <button
-                                onClick={() => {
-                                    if (side !== 'left') {
-                                        setSide('left');
-                                        db.sets.update(entry.id!, { side: 'left', updatedAt: Date.now() });
-                                    }
-                                }}
+                                onClick={() => applySide('left')}
                                 aria-pressed={side === 'left'}
                                 className={clsx(
                                     "text-[10px] uppercase font-bold px-3 py-1 rounded-md cursor-pointer select-none transition-all",
@@ -208,12 +272,7 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
                                 Left
                             </button>
                             <button
-                                onClick={() => {
-                                    if (side !== 'right') {
-                                        setSide('right');
-                                        db.sets.update(entry.id!, { side: 'right', updatedAt: Date.now() });
-                                    }
-                                }}
+                                onClick={() => applySide('right')}
                                 aria-pressed={side === 'right'}
                                 className={clsx(
                                     "text-[10px] uppercase font-bold px-3 py-1 rounded-md cursor-pointer select-none transition-all",
@@ -240,10 +299,7 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
                 <div className="flex items-center gap-2 overflow-x-auto pb-2 px-1 no-scrollbar">
                     {/* Always visible Default option */}
                     <button
-                        onClick={() => {
-                            setVariation('');
-                            db.sets.update(entry.id!, { variation: undefined, updatedAt: Date.now() });
-                        }}
+                        onClick={() => applyVariation(undefined)}
                         aria-pressed={variation === ''}
                         className={clsx(
                             "px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider whitespace-nowrap border-2 transition-all",
@@ -259,10 +315,7 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
                     {variationOptions.map(v => (
                         <button
                             key={v}
-                            onClick={() => {
-                                setVariation(v);
-                                db.sets.update(entry.id!, { variation: v, updatedAt: Date.now() });
-                            }}
+                            onClick={() => applyVariation(v)}
                             aria-pressed={variation === v}
                             className={clsx(
                                 "px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider whitespace-nowrap border-2 transition-all",
@@ -294,10 +347,11 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
                         {massUnitLabel(massUnit)}
                     </div>
                     <InputWithButtons
-                        value={weight}
-                        onChange={setWeight}
+                        value={draft.weight}
+                        onChange={value => patchDraft({ weight: value })}
                         onIncrement={() => stepWeight(weightStep)}
                         onDecrement={() => stepWeight(-weightStep)}
+                        onBlur={writer.flush}
                     />
                 </div>
 
@@ -305,10 +359,11 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
                 <div>
                     <div className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider mb-1 text-center">REPS</div>
                     <InputWithButtons
-                        value={reps}
-                        onChange={setReps}
-                        onIncrement={() => setReps((Number(reps) + 1).toString())}
-                        onDecrement={() => setReps(Math.max(0, Number(reps) - 1).toString())}
+                        value={draft.reps}
+                        onChange={value => patchDraft({ reps: value })}
+                        onIncrement={() => stepReps(1)}
+                        onDecrement={() => stepReps(-1)}
+                        onBlur={writer.flush}
                         isDanger={isFailure}
                     />
                 </div>
@@ -319,10 +374,11 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
                         {useRir ? 'RIR' : 'RPE'}
                     </div>
                     <InputWithButtons
-                        value={rpe}
-                        onChange={setRpe}
-                        onIncrement={() => setRpe(rpe ? Math.min(10, Number(rpe) + 0.5).toString() : useRir ? '2' : '8')}
-                        onDecrement={() => setRpe(rpe ? Math.max(0, Number(rpe) - 0.5).toString() : useRir ? '2' : '8')}
+                        value={draft.intensity}
+                        onChange={value => patchDraft({ intensity: value })}
+                        onIncrement={() => patchDraft({ intensity: draftRef.current.intensity ? Math.min(10, Number(draftRef.current.intensity) + 0.5).toString() : useRir ? '2' : '8' }, true)}
+                        onDecrement={() => patchDraft({ intensity: draftRef.current.intensity ? Math.max(0, Number(draftRef.current.intensity) - 0.5).toString() : useRir ? '2' : '8' }, true)}
+                        onBlur={writer.flush}
                         placeholder="-"
                     />
                 </div>
@@ -354,10 +410,11 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
                     </div>
                     <div className="flex-1 min-w-0">
                         <InputWithButtons
-                            value={failureRep}
-                            onChange={setFailureRep}
-                            onIncrement={() => setFailureRep((Number(failureRep) + 1).toString())}
-                            onDecrement={() => setFailureRep(Math.max(0, Number(failureRep) - 1).toString())}
+                            value={draft.failureRep}
+                            onChange={value => patchDraft({ failureRep: value })}
+                            onIncrement={() => patchDraft({ failureRep: String((Number(draftRef.current.failureRep) || 0) + 1) }, true)}
+                            onDecrement={() => patchDraft({ failureRep: String(Math.max(0, (Number(draftRef.current.failureRep) || 0) - 1)) }, true)}
+                            onBlur={writer.flush}
                             isDanger={true}
                         />
                     </div>
@@ -366,4 +423,3 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
         </div>
     );
 });
-

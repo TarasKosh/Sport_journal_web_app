@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db/db';
 import type { Exercise } from '../../types';
 
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Plus, Search, Tag, Trash2 } from 'lucide-react';
 import { EditExerciseModal } from './EditExerciseModal';
 import { ExerciseDetails } from './ExerciseDetails';
 import { WorkoutTemplateList } from './WorkoutTemplateList';
-import { softDeleteExercise } from '../../services/data/softDelete';
-import { onlyActive } from '../../utils/entityFilters';
+import { ExerciseRepository } from '../../data/repositories/ExerciseRepository';
 import { useToast } from '../../hooks/useToast';
 
 export const ExerciseList: React.FC = () => {
@@ -22,13 +21,9 @@ export const ExerciseList: React.FC = () => {
     const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
     const [activeTab, setActiveTab] = useState<'exercises' | 'templates'>('exercises');
     const [templateCreateTrigger, setTemplateCreateTrigger] = useState(0);
+    const [exerciseToDelete, setExerciseToDelete] = useState<Exercise | null>(null);
 
-    const exercises = useLiveQuery(async () => {
-        const all = onlyActive(await db.exercises.orderBy('name').toArray());
-        if (!search) return all;
-        const lower = search.toLowerCase();
-        return all.filter(e => e.name.toLowerCase().includes(lower) || e.muscleGroup.includes(lower));
-    }, [search]);
+    const exercises = useLiveQuery(() => ExerciseRepository.search(search), [search]);
 
     const handleCreate = () => {
         setEditingExercise(undefined);
@@ -44,6 +39,21 @@ export const ExerciseList: React.FC = () => {
             setTemplateCreateTrigger((v) => v + 1);
         } else {
             handleCreate();
+        }
+    };
+
+    const handleDeleteConfirm = async () => {
+        const exercise = exerciseToDelete;
+        setExerciseToDelete(null);
+        if (!exercise || exercise.id == null) return;
+        try {
+            await ExerciseRepository.softDelete(exercise.id);
+            showToast('Exercise deleted', 'success');
+        } catch (err) {
+            showToast(
+                err instanceof Error ? err.message : 'Delete failed',
+                'error',
+            );
         }
     };
 
@@ -95,21 +105,9 @@ export const ExerciseList: React.FC = () => {
                                 {/* Delete only for custom exercises; always visible for touch */}
                                 {ex.isCustom && (
                                     <button
-                                        onClick={async (e) => {
+                                        onClick={(e) => {
                                             e.stopPropagation();
-                                            if (confirm(`Delete "${ex.name}"? It will be hidden after the next sync.`)) {
-                                                try {
-                                                    if (ex.id != null) {
-                                                        await softDeleteExercise(ex.id);
-                                                        showToast('Exercise deleted', 'success');
-                                                    }
-                                                } catch (err) {
-                                                    showToast(
-                                                        err instanceof Error ? err.message : 'Delete failed',
-                                                        'error',
-                                                    );
-                                                }
-                                            }
+                                            setExerciseToDelete(ex);
                                         }}
                                         className="text-text-tertiary hover:text-danger transition-colors opacity-70 sm:opacity-100 p-2 rounded-lg hover:bg-danger/10"
                                         title="Delete exercise"
@@ -131,6 +129,16 @@ export const ExerciseList: React.FC = () => {
                     exercise={editingExercise}
                 />
             )}
+
+            <ConfirmDialog
+                isOpen={exerciseToDelete != null}
+                title={`Delete "${exerciseToDelete?.name ?? ''}"?`}
+                description="It will be hidden after the next sync."
+                confirmLabel="Delete"
+                variant="danger"
+                onConfirm={handleDeleteConfirm}
+                onClose={() => setExerciseToDelete(null)}
+            />
 
             <div
                 className="fixed left-0 right-0"

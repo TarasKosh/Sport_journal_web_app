@@ -35,6 +35,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                         className={clsx(
                             'pointer-events-auto rounded-xl px-4 py-3 text-sm font-medium shadow-lg border animate-slide-up flex items-start justify-between gap-3',
                             t.kind === 'success' && 'bg-success/15 border-success/40 text-text-primary',
+                            t.kind === 'warning' && 'bg-warning/15 border-warning/40 text-warning',
                             t.kind === 'error' && 'bg-danger/15 border-danger/40 text-danger',
                             t.kind === 'info' && 'bg-bg-secondary border-border text-text-primary',
                         )}

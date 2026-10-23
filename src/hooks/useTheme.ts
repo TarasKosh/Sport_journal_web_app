@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db/db';
 import type { Settings } from '../types';
+import { SettingsRepository } from '../data/repositories/SettingsRepository';
 
 function resolveTheme(theme: Settings['theme']): 'dark' | 'light' {
     if (theme === 'dark' || theme === 'light') return theme;
@@ -21,7 +21,7 @@ function applyThemeClass(mode: 'dark' | 'light') {
  * Reads settings.theme and applies dark/light/system to <html>.
  */
 export function useTheme() {
-    const settings = useLiveQuery(() => db.settings.toCollection().first());
+    const settings = useLiveQuery(() => SettingsRepository.get());
 
     useEffect(() => {
         const theme = settings?.theme ?? 'system';

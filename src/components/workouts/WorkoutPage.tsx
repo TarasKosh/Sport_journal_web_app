@@ -1,16 +1,98 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db/db';
 import { Button } from '../common/Button';
 import { Calendar, CheckCircle, Minus, Play, Plus, Trash2 } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
 import { ActiveWorkoutView } from './ActiveWorkoutView';
 import { WorkoutDayPickerModal } from './WorkoutDayPickerModal';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { toDayString, workoutDayToDate } from '../../utils/dateUtils';
-import { softDeleteWorkout } from '../../services/data/softDelete';
 import { useSettings } from '../../hooks/useSettings';
+import { useDebouncedWriter } from '../../hooks/useDebouncedWriter';
 import { displayToKg, kgToDisplay, massUnitLabel } from '../../utils/mass';
-import type { MassUnit } from '../../types';
+import { WorkoutRepository } from '../../data/repositories/WorkoutRepository';
+import type { Workout } from '../../types';
+
+/**
+ * Post-workout screen. Mounted per workout (`key`) so the notes field initialises from the
+ * stored value instead of being synchronised during render.
+ */
+const WorkoutFinishedPanel: React.FC<{ workout: Workout; onDone: () => void }> = ({ workout, onDone }) => {
+    const [notes, setNotes] = useState(workout.notes || '');
+    const [isDiscardOpen, setIsDiscardOpen] = useState(false);
+
+    /**
+     * Notes autosave (same pattern as SetItem): typing schedules a debounced write, blur
+     * and unmount/tab-hide flush it, so navigating away without the button never loses
+     * the text. Writes are skipped when the text matches the stored row.
+     */
+    const persistNotes = (value: string) => {
+        const trimmed = value.trim() || undefined;
+        if ((workout.notes || undefined) === trimmed) return;
+        void WorkoutRepository.updateMetadata(workout.uuid, { notes: trimmed })
+            .catch(e => console.error('Failed to save workout notes', e));
+    };
+    const writer = useDebouncedWriter(persistNotes, 500);
+
+    const handleSaveFinished = () => {
+        // Notes are already autosaved; flush anything still inside the debounce window.
+        writer.flush();
+        onDone();
+    };
+
+    const handleDiscardFinished = async () => {
+        await WorkoutRepository.softDelete(workout.uuid);
+        setIsDiscardOpen(false);
+        onDone();
+    };
+
+    return (
+        <div className="flex flex-col items-center flex-1 h-full p-6 space-y-6 overflow-y-auto pb-24">
+            <div className="bg-bg-tertiary p-6 rounded-full mt-4">
+                <CheckCircle size={48} className="text-success" />
+            </div>
+            <div className="text-center">
+                <h1 className="text-2xl font-bold mb-1 text-text-primary">Workout Finished!</h1>
+                <p className="text-text-secondary text-sm">Great job! Add any final details.</p>
+            </div>
+
+            <div className="w-full max-w-xs flex flex-col gap-4 text-left mt-2">
+                <div>
+                    <label className="block text-xs font-bold text-text-tertiary mb-1.5 uppercase tracking-wide">Workout Notes</label>
+                    <textarea
+                        rows={2}
+                        className="w-full px-4 py-3 rounded-xl bg-bg-secondary border border-border/60 focus:border-accent outline-none text-text-primary resize-none"
+                        placeholder="How did you feel today?"
+                        value={notes}
+                        onChange={e => {
+                            setNotes(e.target.value);
+                            writer.schedule(e.target.value);
+                        }}
+                        onBlur={writer.flush}
+                    />
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-3 w-full max-w-xs pt-4">
+                <Button size="lg" onClick={handleSaveFinished} fullWidth className="shadow-lg font-bold">
+                    Save to History
+                </Button>
+                <Button size="md" variant="danger" onClick={() => setIsDiscardOpen(true)} fullWidth className="gap-2 mt-4 bg-transparent text-danger hover:bg-danger/10 shadow-none border border-danger/20">
+                    <Trash2 size={18} /> Discard Workout
+                </Button>
+            </div>
+
+            <ConfirmDialog
+                isOpen={isDiscardOpen}
+                title="Discard this workout?"
+                description="It will be removed on this device and after the next sync."
+                confirmLabel="Discard"
+                variant="danger"
+                onConfirm={handleDiscardFinished}
+                onClose={() => setIsDiscardOpen(false)}
+            />
+        </div>
+    );
+};
 
 export const WorkoutPage: React.FC = () => {
     const settings = useSettings();
@@ -18,121 +100,68 @@ export const WorkoutPage: React.FC = () => {
     const [selectedWorkoutDay, setSelectedWorkoutDay] = useState<string>(() => toDayString(new Date()));
     const [isDayPickerOpen, setIsDayPickerOpen] = useState(false);
     const [draftWorkoutDay, setDraftWorkoutDay] = useState<string>(selectedWorkoutDay);
+    /**
+     * Body-weight field: `null` means "follow the prefill".
+     * The previous implementation pushed the prefill into state during render with a
+     * last-value guard; deriving the value keeps user edits while still re-converting on a
+     * unit change.
+     */
+    const [bodyWeightOverride, setBodyWeightOverride] = useState<string | null>(null);
 
-    // Last body weight stored in kg
-    const lastBodyWeightKg = useLiveQuery(async () => {
-        const workouts = await db.workouts
-            .filter(w => !!w.endedAt && w.bodyWeight != null && w.deletedAt == null)
-            .sortBy('startedAt');
-        return workouts.length > 0 ? workouts[workouts.length - 1].bodyWeight ?? null : null;
-    });
+    // Last body weight stored in kg — index range scan, newest workouts first.
+    const lastBodyWeightKg = useLiveQuery(() => WorkoutRepository.lastBodyWeightKg(), []);
 
-    // Pre-workout inputs (on start screen) — display unit from settings.
-    // Track the last auto-prefill so massUnit / lastBodyWeightKg changes re-convert
-    // without clobbering user edits.
-    const [startBodyWeight, setStartBodyWeight] = useState<string>('');
-    const [lastPrefill, setLastPrefill] = useState<{
-        kg: number;
-        unit: MassUnit;
-        display: string;
-    } | null>(null);
+    // Active workout: index lookup on `status` (undefined = still loading, null = none).
+    const activeWorkout = useLiveQuery(async () => (await WorkoutRepository.getActive()) ?? null, []);
 
-    if (lastBodyWeightKg != null) {
-        const stillMatchesPrefill =
-            startBodyWeight === '' ||
-            (lastPrefill != null && startBodyWeight === lastPrefill.display);
-        const needsUpdate =
-            lastPrefill == null ||
-            lastPrefill.kg !== lastBodyWeightKg ||
-            lastPrefill.unit !== settings.massUnit;
+    const finishedWorkout = useLiveQuery(
+        async () => (finishedWorkoutUuid ? (await WorkoutRepository.getByUuid(finishedWorkoutUuid)) ?? null : null),
+        [finishedWorkoutUuid],
+    );
 
-        if (stillMatchesPrefill && needsUpdate) {
-            const display = String(kgToDisplay(lastBodyWeightKg, settings.massUnit));
-            setLastPrefill({ kg: lastBodyWeightKg, unit: settings.massUnit, display });
-            setStartBodyWeight(display);
-        }
-    }
+    const workoutsForSelectedDay = useLiveQuery(
+        () => WorkoutRepository.listFinishedByDay(selectedWorkoutDay),
+        [selectedWorkoutDay],
+    );
 
-    // Query for an active workout (endedAt is undefined or null)
-    // Query for active workouts (should be 0 or 1)
-    const activeWorkouts = useLiveQuery(async () => {
-        return await db.workouts
-            .filter(w => !w.endedAt && w.deletedAt == null)
-            .toArray();
-    });
+    const prefill = lastBodyWeightKg != null ? String(kgToDisplay(lastBodyWeightKg, settings.massUnit)) : '';
+    const startBodyWeight = bodyWeightOverride ?? prefill;
 
-    const finishedWorkout = useLiveQuery(async () => {
-        if (!finishedWorkoutUuid) return null;
-        return await db.workouts.where('uuid').equals(finishedWorkoutUuid).first();
-    }, [finishedWorkoutUuid]);
-
-    // Post-workout notes (on finish screen)
-    // Sync notes from finished workout when it loads (state-during-render pattern)
-    const [notesInput, setNotesInput] = useState<string>('');
-    const [prevFinishedWorkout, setPrevFinishedWorkout] = useState(finishedWorkout);
-    if (finishedWorkout !== prevFinishedWorkout) {
-        setPrevFinishedWorkout(finishedWorkout);
-        if (finishedWorkout) {
-            setNotesInput(finishedWorkout.notes || '');
-        }
-    }
-
-    const workoutsForSelectedDay = useLiveQuery(async () => {
-        return await db.workouts
-            .where('workoutDay')
-            .equals(selectedWorkoutDay)
-            .filter(w => !!w.endedAt && w.deletedAt == null)
-            .toArray();
-    }, [selectedWorkoutDay]);
+    /**
+     * Double-tap guard: a second tap can land before the live query has emitted the
+     * new active workout, so the flag must be a synchronous ref — state alone would
+     * still see the stale value inside the same render batch. Without it two
+     * `status: 'active'` rows get inserted and one lingers invisible forever.
+     */
+    const startInFlightRef = useRef(false);
+    const [isStarting, setIsStarting] = useState(false);
 
     const handleStartWorkout = async () => {
+        if (startInFlightRef.current) return;
+        startInFlightRef.current = true;
+        setIsStarting(true);
         try {
             setFinishedWorkoutUuid(null);
             const now = Date.now();
-            const workoutDay = selectedWorkoutDay || toDayString(new Date(now));
-            await db.workouts.add({
-                uuid: uuidv4(),
-                startedAt: now,
-                workoutDay,
-                // Store body weight in kg
-                bodyWeight: startBodyWeight
+            await WorkoutRepository.start({
+                workoutDay: selectedWorkoutDay || toDayString(new Date(now)),
+                // Stored in kg
+                bodyWeightKg: startBodyWeight
                     ? displayToKg(parseFloat(startBodyWeight), settings.massUnit)
                     : undefined,
-                updatedAt: now
             });
+            setBodyWeightOverride(null);
         } catch (e) {
             console.error("Failed to start workout", e);
+        } finally {
+            startInFlightRef.current = false;
+            setIsStarting(false);
         }
     };
 
-    const handleSaveFinished = async () => {
-        if (finishedWorkout) {
-            await db.workouts.update(finishedWorkout.id!, {
-                notes: notesInput.trim() || undefined,
-                updatedAt: Date.now()
-            });
-        }
-        setFinishedWorkoutUuid(null);
-    };
-
-    const handleDiscardFinished = async () => {
-        if (!finishedWorkout) {
-            setFinishedWorkoutUuid(null);
-            return;
-        }
-        if (confirm('Delete this workout? It will be removed on this device and after the next sync.')) {
-            if (finishedWorkout.id != null) {
-                await softDeleteWorkout(finishedWorkout.id);
-            }
-            setFinishedWorkoutUuid(null);
-        }
-    };
-
-    if (activeWorkouts === undefined) {
+    if (activeWorkout === undefined) {
         return <div className="p-4 text-center mt-10">Loading...</div>;
     }
-
-    const activeWorkout = activeWorkouts[0];
 
     if (activeWorkout) {
         return (
@@ -148,44 +177,16 @@ export const WorkoutPage: React.FC = () => {
     }
 
     if (finishedWorkoutUuid) {
-        return (
-            <div className="flex flex-col items-center flex-1 h-full p-6 space-y-6 overflow-y-auto pb-24">
-                <div className="bg-bg-tertiary p-6 rounded-full mt-4">
-                    <CheckCircle size={48} className="text-success" />
-                </div>
-                <div className="text-center">
-                    <h1 className="text-2xl font-bold mb-1 text-text-primary">Workout Finished!</h1>
-                    <p className="text-text-secondary text-sm">
-                        {finishedWorkout ? 'Great job! Add any final details.' : 'Loading...'}
-                    </p>
-                </div>
-
-                {finishedWorkout && (
-                    <div className="w-full max-w-xs flex flex-col gap-4 text-left mt-2">
-                        <div>
-                            <label className="block text-xs font-bold text-text-tertiary mb-1.5 uppercase tracking-wide">Workout Notes</label>
-                            <textarea
-                                rows={2}
-                                className="w-full px-4 py-3 rounded-xl bg-bg-secondary border border-border/60 focus:border-accent outline-none text-text-primary resize-none"
-                                placeholder="How did you feel today?"
-                                value={notesInput}
-                                onChange={e => setNotesInput(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                )}
-
-                <div className="flex flex-col gap-3 w-full max-w-xs pt-4">
-                    <Button size="lg" onClick={handleSaveFinished} fullWidth className="shadow-lg font-bold">
-                        Save to History
-                    </Button>
-                    <Button size="md" variant="danger" onClick={handleDiscardFinished} fullWidth className="gap-2 mt-4 bg-transparent text-danger hover:bg-danger/10 shadow-none border border-danger/20">
-                        <Trash2 size={18} /> Discard Workout
-                    </Button>
-                </div>
-            </div>
-        );
+        return finishedWorkout
+            ? <WorkoutFinishedPanel key={finishedWorkout.uuid} workout={finishedWorkout} onDone={() => setFinishedWorkoutUuid(null)} />
+            : <div className="p-4 text-center mt-10">Loading...</div>;
     }
+
+    const stepBodyWeight = (delta: number) => {
+        const current = parseFloat(startBodyWeight);
+        if (Number.isNaN(current)) return;
+        setBodyWeightOverride(String(Math.max(0, +(current + delta).toFixed(1))));
+    };
 
     return (
         <div className="flex flex-col items-center justify-center h-full p-6 text-center space-y-6">
@@ -218,11 +219,7 @@ export const WorkoutPage: React.FC = () => {
                 <div className="flex items-center gap-2">
                     <button
                         type="button"
-                        onClick={() => setStartBodyWeight(prev => {
-                            const val = parseFloat(prev);
-                            if (isNaN(val)) return prev;
-                            return String(Math.max(0, +(val - 0.5).toFixed(1)));
-                        })}
+                        onClick={() => stepBodyWeight(-0.5)}
                         disabled={!startBodyWeight}
                         className="h-12 w-12 shrink-0 rounded-xl bg-bg-secondary border border-border/60 flex items-center justify-center text-text-primary hover:bg-bg-tertiary active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                     >
@@ -235,15 +232,11 @@ export const WorkoutPage: React.FC = () => {
                         className="flex-1 px-4 py-3 rounded-xl bg-bg-secondary border border-border/60 focus:border-accent outline-none text-text-primary font-medium text-center text-lg"
                         placeholder="e.g. 75.5"
                         value={startBodyWeight}
-                        onChange={e => setStartBodyWeight(e.target.value)}
+                        onChange={e => setBodyWeightOverride(e.target.value)}
                     />
                     <button
                         type="button"
-                        onClick={() => setStartBodyWeight(prev => {
-                            const val = parseFloat(prev);
-                            if (isNaN(val)) return prev;
-                            return String(+(val + 0.5).toFixed(1));
-                        })}
+                        onClick={() => stepBodyWeight(0.5)}
                         disabled={!startBodyWeight}
                         className="h-12 w-12 shrink-0 rounded-xl bg-bg-secondary border border-border/60 flex items-center justify-center text-text-primary hover:bg-bg-tertiary active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                     >
@@ -252,7 +245,7 @@ export const WorkoutPage: React.FC = () => {
                 </div>
             </div>
 
-            <Button size="lg" onClick={handleStartWorkout} fullWidth className="max-w-xs shadow-lg shadow-accent/20">
+            <Button size="lg" onClick={handleStartWorkout} disabled={isStarting} fullWidth className="max-w-xs shadow-lg shadow-accent/20">
                 Start
             </Button>
             <WorkoutDayPickerModal
@@ -269,5 +262,3 @@ export const WorkoutPage: React.FC = () => {
         </div>
     );
 };
-
-

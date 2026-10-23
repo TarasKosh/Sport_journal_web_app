@@ -9,12 +9,17 @@ import type {
     ConflictLog,
     WorkoutTemplate
 } from '../types';
-import {
-    MassUnit,
-    RPEType
-} from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import { normalizeSet, normalizeWorkout } from '../data/normalize';
+import { seedDefaults } from '../data/seed';
+import { summarizeSets } from '../domain/workout';
 
+/**
+ * Dexie schema owner.
+ *
+ * Schema versions are append-only: never edit a released `version(n)` block, add `version(n+1)`.
+ * Derived/denormalized fields are maintained by the data layer (see src/data) and repaired by
+ * `normalize*` helpers so DB upgrades and sync merges share one code path.
+ */
 export class AppDatabase extends Dexie {
     settings!: Table<Settings>;
     exercises!: Table<Exercise>;
@@ -28,9 +33,9 @@ export class AppDatabase extends Dexie {
         super('StrengthJournalDB');
 
         // Schema definition
-        // Note: We use 'uuid' for relationships to facilitate sync, 
-        // but keep auto-increment 'id' for local indexing speed if needed, 
-        // though Dexie works fine with uuid as primary too. 
+        // Note: We use 'uuid' for relationships to facilitate sync,
+        // but keep auto-increment 'id' for local indexing speed if needed,
+        // though Dexie works fine with uuid as primary too.
         // Prompt asked for "indices Dexie by updatedAt, workout startedAt, exerciseId"
         this.version(1).stores({
             settings: '++id',
@@ -98,87 +103,81 @@ export class AppDatabase extends Dexie {
             });
         });
 
-        this.on('populate', () => this.seedData());
-    }
+        // v5 — indexability + derived caches.
+        // IndexedDB cannot index undefined/null, so "the active workout" used to be a full
+        // table scan. `status` makes that an index lookup; [status+startedAt] and
+        // [status+workoutDay] give range + ordering without post-filtering; set-level
+        // denormalized keys make "last performance of an exercise" an index range.
+        this.version(5).stores({
+            settings: '++id',
+            exercises: '++id, &uuid, name, muscleGroup, updatedAt, deletedAt',
+            workouts: '++id, &uuid, status, startedAt, endedAt, workoutDay, [status+startedAt], [status+workoutDay], updatedAt, deletedAt',
+            workoutExercises: '++id, &uuid, workoutId, exerciseId, [workoutId+order], updatedAt, deletedAt',
+            sets: '++id, &uuid, workoutExerciseId, exerciseId, workoutId, [exerciseId+performedAt], updatedAt, deletedAt',
+            conflictLog: '++id, &uuid, entityType, entityId',
+            workoutTemplates: '++id, &uuid, name, isCustom, updatedAt, deletedAt'
+        }).upgrade(async (tx) => {
+            const workoutTable = tx.table<Workout, number>('workouts');
+            const workoutExerciseTable = tx.table<WorkoutExercise, number>('workoutExercises');
+            const setTable = tx.table<SetEntry, number>('sets');
 
-    async seedData() {
-        // Initial Settings
-        await this.settings.add({
-            massUnit: MassUnit.KG,
-            weightStep: 2.5,
-            defaultRPEType: RPEType.RPE,
-            theme: 'system',
-            language: 'en', // or ru
-            updatedAt: Date.now(),
+            const workouts = await workoutTable.toArray();
+            const workoutByUuid = new Map(workouts.map(workout => [workout.uuid, workout]));
+            const workoutExercises = await workoutExerciseTable.toArray();
+            const workoutExerciseByUuid = new Map(workoutExercises.map(row => [row.uuid, row]));
+
+            await workoutTable.toCollection().modify((workout) => {
+                const normalized = normalizeWorkout(workout);
+                workout.startedAt = normalized.startedAt;
+                workout.workoutDay = normalized.workoutDay;
+                workout.status = normalized.status;
+            });
+
+            await setTable.toCollection().modify((set) => {
+                const workoutExercise = workoutExerciseByUuid.get(set.workoutExerciseId);
+                const normalized = normalizeSet(set, {
+                    workoutExercise,
+                    workoutStartedAt: workoutExercise
+                        ? workoutByUuid.get(workoutExercise.workoutId)?.startedAt
+                        : undefined,
+                });
+                set.exerciseId = normalized.exerciseId;
+                set.workoutId = normalized.workoutId;
+                set.performedAt = normalized.performedAt;
+            });
+
+            const setsByWorkout = new Map<string, SetEntry[]>();
+            for (const set of await setTable.toArray()) {
+                if (set.deletedAt != null || !set.workoutId) continue;
+                // Match `recountWorkout` (src/data/aggregates.ts): a set only counts toward
+                // its workout's aggregates while its workout-exercise parent exists and is
+                // not soft-deleted, otherwise the backfilled cache disagrees with the first
+                // later recount.
+                const parent = workoutExerciseByUuid.get(set.workoutExerciseId);
+                if (parent == null || parent.deletedAt != null) continue;
+                const list = setsByWorkout.get(set.workoutId);
+                if (list) list.push(set);
+                else setsByWorkout.set(set.workoutId, [set]);
+            }
+
+            const exerciseCountByWorkout = new Map<string, number>();
+            for (const workoutExercise of workoutExercises) {
+                if (workoutExercise.deletedAt != null) continue;
+                exerciseCountByWorkout.set(
+                    workoutExercise.workoutId,
+                    (exerciseCountByWorkout.get(workoutExercise.workoutId) ?? 0) + 1,
+                );
+            }
+
+            await workoutTable.toCollection().modify((workout) => {
+                const { setsCount, totalTonnage } = summarizeSets(setsByWorkout.get(workout.uuid) ?? []);
+                workout.setsCount = setsCount;
+                workout.totalTonnage = totalTonnage;
+                workout.exerciseCount = exerciseCountByWorkout.get(workout.uuid) ?? 0;
+            });
         });
 
-        // Default Exercises
-        const defaultExercises: Partial<Exercise>[] = [
-            { name: 'Squat (Barbell)', muscleGroup: 'legs', movementType: 'compound' },
-            { name: 'Bench Press (Barbell)', muscleGroup: 'chest', movementType: 'compound' },
-            { name: 'Deadlift (Barbell)', muscleGroup: 'back', movementType: 'compound' },
-            { name: 'Overhead Press (Barbell)', muscleGroup: 'shoulders', movementType: 'compound' },
-            { name: 'Pull Up', muscleGroup: 'back', movementType: 'compound' },
-            { name: 'Dumbbell Row', muscleGroup: 'back', movementType: 'compound', isUnilateral: true },
-            { name: 'Lunges', muscleGroup: 'legs', movementType: 'compound', isUnilateral: true },
-            { name: 'Leg Press', muscleGroup: 'legs', movementType: 'compound' },
-            { name: 'Lat Pulldown', muscleGroup: 'back', movementType: 'isolation' },
-            { name: 'Bicep Curl (Dumbbell)', muscleGroup: 'arms', movementType: 'isolation', isUnilateral: true },
-            { name: 'Tricep Extension', muscleGroup: 'arms', movementType: 'isolation' },
-            { name: 'Plank', muscleGroup: 'core', movementType: 'isometric' },
-            { name: 'Sit-Up', muscleGroup: 'core', movementType: 'compound' },
-            { name: 'Bulgarian Split Squat', muscleGroup: 'legs', movementType: 'compound', isUnilateral: true },
-            { name: 'Dips', muscleGroup: 'chest', movementType: 'compound' },
-            { name: 'Calf Raise', muscleGroup: 'legs', movementType: 'isolation' },
-        ];
-
-        const now = Date.now();
-        const exercisesWithUUIDs = defaultExercises.map(ex => ({
-            ...ex,
-            uuid: uuidv4(),
-            isCustom: false,
-            updatedAt: now,
-            equipment: 'gym',
-            aliases: [],
-            variations: []
-        } as Exercise));
-        
-        await this.exercises.bulkAdd(exercisesWithUUIDs);
-
-        // Default Workout Templates
-        const pullUpUUID = exercisesWithUUIDs.find(e => e.name === 'Pull Up')?.uuid;
-        const squatUUID = exercisesWithUUIDs.find(e => e.name === 'Squat (Barbell)')?.uuid;
-        const benchPressUUID = exercisesWithUUIDs.find(e => e.name === 'Bench Press (Barbell)')?.uuid;
-        const deadliftUUID = exercisesWithUUIDs.find(e => e.name === 'Deadlift (Barbell)')?.uuid;
-        const dipsUUID = exercisesWithUUIDs.find(e => e.name === 'Dips')?.uuid;
-        const bulgarianUUID = exercisesWithUUIDs.find(e => e.name === 'Bulgarian Split Squat')?.uuid;
-
-        const defaultTemplates: Partial<WorkoutTemplate>[] = [
-            {
-                name: 'Upper Body',
-                description: 'Chest, back, and arms',
-                exercises: [benchPressUUID, pullUpUUID, dipsUUID].filter(Boolean) as string[]
-            },
-            {
-                name: 'Lower Body',
-                description: 'Legs and glutes',
-                exercises: [squatUUID, bulgarianUUID, deadliftUUID].filter(Boolean) as string[]
-            },
-            {
-                name: 'Full Body',
-                description: 'Complete workout',
-                exercises: [squatUUID, benchPressUUID, pullUpUUID, deadliftUUID].filter(Boolean) as string[]
-            }
-        ];
-
-        await this.workoutTemplates.bulkAdd(
-            defaultTemplates.map(template => ({
-                ...template,
-                uuid: uuidv4(),
-                isCustom: false,
-                updatedAt: now
-            } as WorkoutTemplate))
-        );
+        this.on('populate', () => seedDefaults(this));
     }
 }
 

@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import type { Exercise, MuscleGroup } from '../../types';
-import { db } from '../../db/db';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { ModalShell } from '../common/ModalShell';
-import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '../../hooks/useToast';
+import { ExerciseRepository } from '../../data/repositories/ExerciseRepository';
 
 interface EditExerciseModalProps {
     isOpen: boolean;
@@ -29,20 +28,16 @@ export const EditExerciseModal: React.FC<EditExerciseModalProps> = ({ isOpen, on
         if (!name.trim()) return;
 
         try {
-            if (exercise && exercise.id) {
-                await db.exercises.update(exercise.id, {
+            if (exercise && exercise.id != null) {
+                await ExerciseRepository.update(exercise.id, {
                     name,
-                    muscleGroup: muscle,
-                    updatedAt: Date.now()
+                    muscleGroup: muscle
                 });
             } else {
-                await db.exercises.add({
-                    uuid: uuidv4(),
+                await ExerciseRepository.create({
                     name,
-                    muscleGroup: muscle,
-                    isCustom: true,
-                    updatedAt: Date.now()
-                } as Exercise);
+                    muscleGroup: muscle
+                });
             }
             onClose();
         } catch (e) {

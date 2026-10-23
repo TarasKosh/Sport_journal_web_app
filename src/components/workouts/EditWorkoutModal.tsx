@@ -1,25 +1,174 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
-import type { Exercise, Workout } from '../../types';
-import { db } from '../../db/db';
-import { useLiveQuery } from 'dexie-react-hooks';
+import React, { useRef, useState, useEffect } from 'react';
+import type { MassUnit, Workout } from '../../types';
 import { Button } from '../common/Button';
 import { X, Plus, Dumbbell, CheckCircle, ChevronDown } from 'lucide-react';
 import { ExercisePickerModal } from './ExercisePickerModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { SetList } from './WorkoutSetList';
-import { v4 as uuidv4 } from 'uuid';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
-import { softDeleteWorkoutExerciseAndReorder } from '../../services/data/softDelete';
-import { onlyActive } from '../../utils/entityFilters';
 import { useSettings } from '../../hooks/useSettings';
-import { displayToKg, kgToDisplay, massUnitLabel } from '../../utils/mass';
+import { useWorkoutEditor } from '../../hooks/useWorkoutEditor';
+import { WorkoutRepository } from '../../data/repositories/WorkoutRepository';
+import { buildCloseFlushPatch, buildMetadataSavePatch, parseDisplayWeight, type WorkoutMetadataDraft } from '../../domain/workout';
+import { kgToDisplay, massUnitLabel } from '../../utils/mass';
 
 interface EditWorkoutModalProps {
   workout: Workout;
   isOpen: boolean;
   onClose: () => void;
+  /** Called after every successful metadata save. Closing the modal is the caller's choice. */
   onSaved?: (updated: Workout) => void;
 }
+
+interface MetadataFormProps {
+  workout: Workout;
+  massUnit: MassUnit;
+  title: string;
+  onTitleChange: (value: string) => void;
+  onSaved: (updated: Workout) => void;
+}
+
+/**
+ * Metadata editor, mounted per workout (`key={workout.uuid}`) so field state initialises
+ * from props and never has to be synchronised with an effect.
+ *
+ * Bug fix: the previous implementation called `setMood(next); handleSaveMetadata();` — the
+ * save closure still held the *previous* mood, so the selection was persisted one step
+ * behind, and the date field (which had no blur handler) was never saved at all. Saves now
+ * receive explicit overrides, so the value being persisted is the value the user picked.
+ */
+const MetadataForm: React.FC<MetadataFormProps> = ({ workout, massUnit, title, onTitleChange, onSaved }) => {
+  const [notes, setNotes] = useState(workout.notes || '');
+  const [mood, setMood] = useState<NonNullable<Workout['mood']>>(workout.mood || 'neutral');
+  const [bodyWeight, setBodyWeight] = useState(
+    workout.bodyWeight != null ? String(kgToDisplay(workout.bodyWeight, massUnit)) : '',
+  );
+  const [workoutDay, setWorkoutDay] = useState(workout.workoutDay || '');
+
+  // A non-empty, unparsable weight string is flagged on the input and skipped on save.
+  const bodyWeightInvalid = parseDisplayWeight(bodyWeight) === null;
+
+  // Latest field values and the last values successfully persisted, for the unmount flush
+  // below. Context (unit + row) is captured too: values typed so far belong to that unit.
+  const latestRef = useRef<WorkoutMetadataDraft>({ title, notes, mood, bodyWeight, workoutDay });
+  const persistedRef = useRef<WorkoutMetadataDraft>({ title, notes, mood, bodyWeight, workoutDay });
+  const flushContextRef = useRef({ massUnit, workout });
+  useEffect(() => {
+    latestRef.current = { title, notes, mood, bodyWeight, workoutDay };
+    flushContextRef.current = { massUnit, workout };
+  });
+
+  /**
+   * Persists the current draft. An unparsable body weight is skipped (never written as
+   * NaN, never cleared) instead of aborting the whole save — the other fields still go
+   * through, and the input is flagged invalid below.
+   */
+  const save = async (overrides: Partial<WorkoutMetadataDraft> = {}) => {
+    const fields: WorkoutMetadataDraft = { title, notes, mood, bodyWeight, workoutDay, ...overrides };
+    const patch = buildMetadataSavePatch(fields, massUnit, workout);
+
+    try {
+      await WorkoutRepository.updateMetadata(workout.uuid, patch);
+      persistedRef.current = fields;
+      onSaved({ ...workout, ...patch });
+    } catch (e) {
+      console.error('Failed to save workout metadata', e);
+    }
+  };
+
+  /**
+   * Flush pending edits on unmount. Closing the modal (Escape, backdrop, X, Close button)
+   * removes the form from the DOM before React fires the inputs' pending blur handlers, so
+   * without this the last keystrokes would be lost. `onSaved` is not called: the modal is
+   * going away, and live queries refresh whatever the caller shows.
+   */
+  useEffect(() => {
+    return () => {
+      const { massUnit: unit, workout: row } = flushContextRef.current;
+      const patch = buildCloseFlushPatch(latestRef.current, persistedRef.current, unit, row);
+      if (Object.keys(patch).length === 0) return;
+      void WorkoutRepository.updateMetadata(row.uuid, patch).catch(e => {
+        console.error('Failed to flush workout metadata on close', e);
+      });
+    };
+  }, []);
+
+  return (
+    <div className="px-4 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div>
+        <label className="block text-xs font-semibold text-white/80 mb-1">Title</label>
+        <input
+          className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm"
+          type="text"
+          value={title}
+          onChange={e => onTitleChange(e.target.value)}
+          onBlur={() => save()}
+          placeholder="Workout title"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-white/80 mb-1">Mood</label>
+        <select
+          className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm"
+          value={mood}
+          onChange={e => {
+            const next = e.target.value as NonNullable<Workout['mood']>;
+            setMood(next);
+            void save({ mood: next });
+          }}
+        >
+          <option value="great">Great</option>
+          <option value="good">Good</option>
+          <option value="neutral">Neutral</option>
+          <option value="bad">Bad</option>
+          <option value="terrible">Terrible</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-white/80 mb-1">
+          Body Weight ({massUnitLabel(massUnit).toLowerCase()})
+        </label>
+        <input
+          className={`w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 focus:outline-none text-sm ${
+            bodyWeightInvalid ? 'border-danger focus:border-danger' : 'border-white/30 focus:border-white/50'
+          }`}
+          type="number"
+          min="0"
+          step="0.01"
+          value={bodyWeight}
+          onChange={e => setBodyWeight(e.target.value)}
+          onBlur={() => save()}
+          aria-invalid={bodyWeightInvalid || undefined}
+          placeholder="0"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-white/80 mb-1">Date</label>
+        <input
+          className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm"
+          type="date"
+          value={workoutDay}
+          onChange={e => {
+            const next = e.target.value;
+            setWorkoutDay(next);
+            void save({ workoutDay: next });
+          }}
+        />
+      </div>
+      <div className="sm:col-span-2 lg:col-span-1">
+        <label className="block text-xs font-semibold text-white/80 mb-1">Notes</label>
+        <textarea
+          className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm resize-none"
+          rows={2}
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          onBlur={() => save()}
+          placeholder="Workout notes..."
+        />
+      </div>
+    </div>
+  );
+};
 
 /**
  * Full-featured modal for editing completed workouts:
@@ -29,163 +178,55 @@ interface EditWorkoutModalProps {
  */
 export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isOpen, onClose, onSaved }) => {
   const settings = useSettings();
-  // Metadata states
-  const [title, setTitle] = useState(workout.title || '');
-  const [notes, setNotes] = useState(workout.notes || '');
-  const [mood, setMood] = useState<Workout['mood']>(workout.mood || 'neutral');
-  const [bodyWeight, setBodyWeight] = useState(
-    workout.bodyWeight != null ? String(kgToDisplay(workout.bodyWeight, settings.massUnit)) : '',
-  );
-  const [workoutDay, setWorkoutDay] = useState(workout.workoutDay || '');
+  const { workoutExercises, exerciseIndex, addExercise, addTemplate, moveExercise, removeExercise } =
+    useWorkoutEditor(workout.uuid);
 
-  // Exercise picker states
+  const [title, setTitle] = useState(workout.title || '');
+  const [loadedUuid, setLoadedUuid] = useState(workout.uuid);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
-
-  // Two-tap confirm state for exercise deletion
-  const [confirmDeleteExerciseId, setConfirmDeleteExerciseId] = useState<number | null>(null);
-
-  // Header collapsed/expanded state — collapsed by default so exercises are visible
+  const [confirmDeleteExerciseUuid, setConfirmDeleteExerciseUuid] = useState<string | null>(null);
   const [isHeaderExpanded, setIsHeaderExpanded] = useState(false);
-
-  // Save notification state
   const [showSavedNotification, setShowSavedNotification] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const confirmDeleteTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useFocusTrap(isOpen, containerRef);
+
+  // The caller may swap the workout prop without unmounting; re-seed the header title then.
+  if (loadedUuid !== workout.uuid) {
+    setLoadedUuid(workout.uuid);
+    setTitle(workout.title || '');
+  }
 
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (confirmDeleteTimerRef.current) clearTimeout(confirmDeleteTimerRef.current);
     };
   }, []);
 
-  // Load exercises for this workout
-  const exercises = useLiveQuery(async () => {
-    const list = onlyActive(await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray());
-    return list.sort((a, b) => a.order - b.order);
-  }, [workout.uuid]);
-
-  // Include soft-deleted exercises so historical workout still shows names
-  const allExercises = useLiveQuery(() => db.exercises.toArray(), []);
-  const exerciseMap = useMemo(() => {
-    const map = new Map<string, Exercise>();
-    for (const ex of allExercises ?? []) map.set(ex.uuid, ex);
-    return map;
-  }, [allExercises]);
-
-  // Update local states when workout changes
-  useEffect(() => {
-    if (workout) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing prop-derived state
-      setTitle(workout.title || '');
-      setNotes(workout.notes || '');
-      setMood(workout.mood || 'neutral');
-      setBodyWeight(
-        workout.bodyWeight != null ? String(kgToDisplay(workout.bodyWeight, settings.massUnit)) : '',
-      );
-      setWorkoutDay(workout.workoutDay || '');
-    }
-  }, [workout, settings.massUnit]);
-
-  // Save metadata changes (debounced or on explicit save)
-  const handleSaveMetadata = async () => {
-    const parsedDisplay = bodyWeight !== '' ? parseFloat(bodyWeight) : undefined;
-    if (bodyWeight !== '' && isNaN(parsedDisplay!)) return;
-    const bodyWeightKg = parsedDisplay != null
-      ? displayToKg(parsedDisplay, settings.massUnit)
-      : undefined;
-    try {
-      await db.workouts.update(workout.id!, {
-        title: title.trim() || undefined,
-        notes: notes.trim() || undefined,
-        mood,
-        bodyWeight: bodyWeightKg,
-        workoutDay: workoutDay.trim(),
-        updatedAt: Date.now()
-      });
-      onSaved?.({ ...workout, title, notes, mood, bodyWeight: bodyWeightKg, workoutDay });
-
-      // Show saved notification
-      setShowSavedNotification(true);
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => {
-        setShowSavedNotification(false);
-      }, 2000);
-    } catch (e) {
-      console.error('Failed to save workout metadata', e);
-    }
+  const handleSaved = (updated: Workout) => {
+    setShowSavedNotification(true);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      setShowSavedNotification(false);
+    }, 2000);
+    onSaved?.(updated);
   };
 
-  // Add exercise to workout
-  const handleAddExercise = async (exerciseId: string) => {
-    try {
-      const active = onlyActive(await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray());
-      await db.workoutExercises.add({
-        uuid: uuidv4(),
-        workoutId: workout.uuid,
-        exerciseId,
-        order: active.length,
-        updatedAt: Date.now()
-      });
-      setIsPickerOpen(false);
-    } catch (e) {
-      console.error("Failed to add exercise", e);
-    }
-  };
-
-  // Add template exercises to workout
-  const handleAddTemplate = async (templateId: string) => {
-    try {
-      const template = await db.workoutTemplates.where('uuid').equals(templateId).first();
-      if (!template || template.deletedAt != null) return;
-
-      const active = onlyActive(await db.workoutExercises.where('workoutId').equals(workout.uuid).toArray());
-      const count = active.length;
-
-      for (let i = 0; i < template.exercises.length; i++) {
-        await db.workoutExercises.add({
-          uuid: uuidv4(),
-          workoutId: workout.uuid,
-          exerciseId: template.exercises[i],
-          order: count + i,
-          updatedAt: Date.now()
-        });
-      }
-
-      setIsTemplatePickerOpen(false);
-    } catch (e) {
-      console.error("Failed to add template", e);
-    }
-  };
-
-  // Soft-delete exercise from workout (two-tap confirmation pattern)
-  const deleteExercise = async (workoutExerciseId: number) => {
-    if (confirmDeleteExerciseId !== workoutExerciseId) {
-      setConfirmDeleteExerciseId(workoutExerciseId);
-      setTimeout(() => setConfirmDeleteExerciseId(null), 3000);
+  const deleteExercise = async (workoutExerciseUuid: string) => {
+    if (confirmDeleteExerciseUuid !== workoutExerciseUuid) {
+      setConfirmDeleteExerciseUuid(workoutExerciseUuid);
+      // Replace any pending timer: an untracked one armed for a previous exercise would
+      // fire first and cancel this newer confirmation early. Cleared on unmount above.
+      if (confirmDeleteTimerRef.current) clearTimeout(confirmDeleteTimerRef.current);
+      confirmDeleteTimerRef.current = setTimeout(() => setConfirmDeleteExerciseUuid(null), 3000);
       return;
     }
-
-    await softDeleteWorkoutExerciseAndReorder(workoutExerciseId, workout.uuid);
-    setConfirmDeleteExerciseId(null);
-  };
-
-  // Move exercise up/down
-  const moveExercise = async (index: number, direction: 'up' | 'down') => {
-    if (!exercises) return;
-
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= exercises.length) return;
-
-    const ex1 = exercises[index];
-    const ex2 = exercises[newIndex];
-
-    const now = Date.now();
-    // Swap orders
-    await db.workoutExercises.update(ex1.id!, { order: newIndex, updatedAt: now });
-    await db.workoutExercises.update(ex2.id!, { order: index, updatedAt: now });
+    await removeExercise(workoutExerciseUuid);
+    setConfirmDeleteExerciseUuid(null);
   };
 
   if (!isOpen) return null;
@@ -249,83 +290,20 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
             className="overflow-hidden transition-all duration-300 ease-in-out"
             style={{ maxHeight: isHeaderExpanded ? '420px' : '0px' }}
           >
-            <div className="px-4 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-white/80 mb-1">Title</label>
-                <input
-                  className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm"
-                  type="text"
-                  value={title}
-                  onChange={e => setTitle(e.target.value)}
-                  onBlur={handleSaveMetadata}
-                  placeholder="Workout title"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-white/80 mb-1">Mood</label>
-                <select
-                  className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm"
-                  value={mood}
-                  onChange={e => {
-                    const newMood = e.target.value as Workout['mood'];
-                    if (newMood) {
-                      setMood(newMood);
-                      handleSaveMetadata();
-                    }
-                  }}
-                >
-                  <option value="great">Great</option>
-                  <option value="good">Good</option>
-                  <option value="neutral">Neutral</option>
-                  <option value="bad">Bad</option>
-                  <option value="terrible">Terrible</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-white/80 mb-1">
-                  Body Weight ({massUnitLabel(settings.massUnit).toLowerCase()})
-                </label>
-                <input
-                  className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={bodyWeight}
-                  onChange={e => setBodyWeight(e.target.value)}
-                  onBlur={handleSaveMetadata}
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-white/80 mb-1">Date</label>
-                <input
-                  className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm"
-                  type="date"
-                  value={workoutDay}
-                  onChange={e => {
-                    setWorkoutDay(e.target.value);
-                    handleSaveMetadata();
-                  }}
-                />
-              </div>
-              <div className="sm:col-span-2 lg:col-span-1">
-                <label className="block text-xs font-semibold text-white/80 mb-1">Notes</label>
-                <textarea
-                  className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm resize-none"
-                  rows={2}
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  onBlur={handleSaveMetadata}
-                  placeholder="Workout notes..."
-                />
-              </div>
-            </div>
+            <MetadataForm
+              key={workout.uuid}
+              workout={workout}
+              massUnit={settings.massUnit}
+              title={title}
+              onTitleChange={setTitle}
+              onSaved={handleSaved}
+            />
           </div>
         </div>
 
         {/* Content - Exercises List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-bg-primary">
-          {exercises?.length === 0 && (
+          {workoutExercises?.length === 0 && (
             <div className="text-center py-16 px-6">
               <div className="bg-bg-tertiary w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Dumbbell size={36} className="text-text-tertiary" />
@@ -335,20 +313,18 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
             </div>
           )}
 
-          {exercises?.map((we, index) => (
-              <SetList
-                key={we.uuid}
-                workoutExercise={we}
-                exercise={exerciseMap.get(we.exerciseId)}
-                index={index}
-                totalCount={exercises.length}
-                onDelete={(id) => deleteExercise(id)}
-                workoutExerciseId={we.id!}
-                isConfirmingDelete={confirmDeleteExerciseId === we.id}
-                onMoveUp={moveExercise}
-                onMoveDown={moveExercise}
-              />
-            ))}
+          {workoutExercises?.map((workoutExercise, index) => (
+            <SetList
+              key={workoutExercise.uuid}
+              workoutExercise={workoutExercise}
+              exercise={exerciseIndex.get(workoutExercise.exerciseId)}
+              index={index}
+              totalCount={workoutExercises.length}
+              onDelete={deleteExercise}
+              isConfirmingDelete={confirmDeleteExerciseUuid === workoutExercise.uuid}
+              onMove={moveExercise}
+            />
+          ))}
 
           {/* Add Buttons */}
           <div className="grid grid-cols-2 gap-3 pb-4">
@@ -389,17 +365,21 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
         <ExercisePickerModal
           isOpen={isPickerOpen}
           onClose={() => setIsPickerOpen(false)}
-          onSelect={handleAddExercise}
+          onSelect={async (exerciseUuid) => {
+            await addExercise(exerciseUuid);
+            setIsPickerOpen(false);
+          }}
         />
 
         <TemplatePickerModal
           isOpen={isTemplatePickerOpen}
           onClose={() => setIsTemplatePickerOpen(false)}
-          onSelect={handleAddTemplate}
+          onSelect={async (templateUuid) => {
+            await addTemplate(templateUuid);
+            setIsTemplatePickerOpen(false);
+          }}
         />
       </div>
     </div>
   );
 };
-
-

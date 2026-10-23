@@ -1,4 +1,4 @@
-import type { SyncProvider, SyncSnapshot } from './types';
+import { RemoteSnapshotChangedError, type SyncProvider, type SyncSnapshot } from './types';
 import { validateSnapshot } from './validateSnapshot';
 
 const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
@@ -41,7 +41,15 @@ interface DriveFileListResponse {
     files?: Array<{
         id: string;
         name: string;
+        version?: number;
     }>;
+}
+
+/** Identifies a Drive file plus the revision marker used by the lost-update guard. */
+interface DriveFileRevision {
+    fileId: string;
+    /** Drive's per-file monotonically increasing revision counter; null if Drive omits it. */
+    version: number | null;
 }
 
 interface DriveFileMetadata {
@@ -72,6 +80,16 @@ export class GoogleDriveSyncProvider implements SyncProvider {
     private readonly CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
     private static readonly MAX_RETRIES = 3;
     private static readonly RETRY_DELAY_MS = 1000;
+
+    /**
+     * Snapshot file state as observed by the last pull(), used by push() to detect a
+     * cross-device lost update (another device pushed between this device's pull and push;
+     * navigator.locks only serialises tabs on one device).
+     * - `undefined`: this provider never pulled — guard inactive (SyncManager always pulls first).
+     * - `null`: pull saw no snapshot file — push must refuse if one appeared meanwhile.
+     * - object: pull saw this file at this revision — push must refuse if id or revision changed.
+     */
+    private remoteRevisionAtPull: DriveFileRevision | null | undefined;
 
     private async sleep(ms: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, ms));
@@ -152,6 +170,9 @@ export class GoogleDriveSyncProvider implements SyncProvider {
     }
 
     async disconnect(): Promise<void> {
+        // The session is over: any revision captured by a previous pull is stale.
+        this.remoteRevisionAtPull = undefined;
+
         if (!this.accessToken) {
             return;
         }
@@ -201,30 +222,63 @@ export class GoogleDriveSyncProvider implements SyncProvider {
         return response;
     }
 
-    private async findSnapshotFileId(): Promise<string | null> {
+    private async findSnapshotFile(): Promise<DriveFileRevision | null> {
         const query = encodeURIComponent(`name = '${SNAPSHOT_FILE_NAME}' and 'appDataFolder' in parents and trashed = false`);
         const response = await this.driveRequest(
-            `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name)&pageSize=1&q=${query}`,
+            `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name,version)&pageSize=1&q=${query}`,
         );
         const payload = await response.json() as DriveFileListResponse;
+        const file = payload.files?.[0];
 
-        return payload.files?.[0]?.id ?? null;
+        if (!file) {
+            return null;
+        }
+        return {
+            fileId: file.id,
+            version: typeof file.version === 'number' ? file.version : null,
+        };
     }
 
     async pull(): Promise<SyncSnapshot | null> {
-        const fileId = await this.findSnapshotFileId();
-        if (!fileId) {
+        const file = await this.findSnapshotFile();
+        this.remoteRevisionAtPull = file;
+
+        if (!file) {
             return null;
         }
 
-        const response = await this.driveRequest(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+        const response = await this.driveRequest(`https://www.googleapis.com/drive/v3/files/${file.fileId}?alt=media`);
         const raw = await response.json() as unknown;
         return validateSnapshot(raw);
     }
 
+    /**
+     * Cross-device lost-update guard: refuses to overwrite a snapshot that changed since the
+     * pull() of this same provider instance. Without it, device B pushing stale merge results
+     * would silently drop device A's rows from the cloud copy until A syncs again.
+     */
+    private assertRemoteUnchangedSincePull(currentFile: DriveFileRevision | null): void {
+        if (this.remoteRevisionAtPull === undefined) {
+            return;
+        }
+
+        const changed = this.remoteRevisionAtPull === null
+            ? currentFile !== null
+            : currentFile === null
+              || currentFile.fileId !== this.remoteRevisionAtPull.fileId
+              || currentFile.version !== this.remoteRevisionAtPull.version;
+
+        if (changed) {
+            throw new RemoteSnapshotChangedError();
+        }
+    }
+
     async push(snapshot: SyncSnapshot): Promise<void> {
         const body = JSON.stringify(snapshot, null, 2);
-        let fileId = await this.findSnapshotFileId();
+        const currentFile = await this.findSnapshotFile();
+        this.assertRemoteUnchangedSincePull(currentFile);
+
+        let fileId = currentFile?.fileId;
 
         if (!fileId) {
             const createResponse = await this.driveRequest('https://www.googleapis.com/drive/v3/files', {

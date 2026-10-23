@@ -2,15 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Search, Trash2, Edit2, Dumbbell } from 'lucide-react';
 
-import { db } from '../../db/db';
 import type { WorkoutTemplate } from '../../types';
 
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { EditWorkoutTemplateModal } from './EditWorkoutTemplateModal';
-import { softDeleteWorkoutTemplate } from '../../services/data/softDelete';
-import { onlyActive } from '../../utils/entityFilters';
+import { TemplateRepository } from '../../data/repositories/TemplateRepository';
 import { useToast } from '../../hooks/useToast';
 
 export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ createTrigger = 0 }) => {
@@ -18,6 +17,7 @@ export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ crea
     const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<WorkoutTemplate | undefined>(undefined);
+    const [templateToDelete, setTemplateToDelete] = useState<WorkoutTemplate | null>(null);
     const prevTrigger = useRef(createTrigger);
 
     useEffect(() => {
@@ -28,9 +28,7 @@ export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ crea
         prevTrigger.current = createTrigger;
     }, [createTrigger]);
 
-    const templates = useLiveQuery(async () => {
-        return onlyActive(await db.workoutTemplates.orderBy('name').toArray());
-    }, []);
+    const templates = useLiveQuery(() => TemplateRepository.listActive(), []);
 
     const filtered = useMemo(() => {
         if (!templates) return undefined;
@@ -42,6 +40,21 @@ export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ crea
     const handleCreate = () => {
         setEditingTemplate(undefined);
         setIsModalOpen(true);
+    };
+
+    const handleDeleteConfirm = async () => {
+        const template = templateToDelete;
+        setTemplateToDelete(null);
+        if (!template || template.id == null) return;
+        try {
+            await TemplateRepository.softDelete(template.id);
+            showToast('Template deleted', 'success');
+        } catch (err) {
+            showToast(
+                err instanceof Error ? err.message : 'Delete failed',
+                'error',
+            );
+        }
     };
 
     return (
@@ -86,7 +99,7 @@ export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ crea
                         </div>
 
                         <button
-                            onClick={async (e) => {
+                            onClick={(e) => {
                                 e.stopPropagation();
                                 setEditingTemplate(t);
                                 setIsModalOpen(true);
@@ -99,14 +112,9 @@ export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ crea
 
                         {t.isCustom && (
                             <button
-                                onClick={async (e) => {
+                                onClick={(e) => {
                                     e.stopPropagation();
-                                    if (confirm(`Delete "${t.name}"? It will be hidden after the next sync.`)) {
-                                        if (t.id != null) {
-                                            await softDeleteWorkoutTemplate(t.id);
-                                            showToast('Template deleted', 'success');
-                                        }
-                                    }
+                                    setTemplateToDelete(t);
                                 }}
                                 className="text-text-tertiary hover:text-danger transition-colors opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-danger/10"
                                 title="Delete template"
@@ -125,6 +133,16 @@ export const WorkoutTemplateList: React.FC<{ createTrigger?: number }> = ({ crea
                     template={editingTemplate}
                 />
             )}
+
+            <ConfirmDialog
+                isOpen={templateToDelete != null}
+                title={`Delete "${templateToDelete?.name ?? ''}"?`}
+                description="It will be hidden after the next sync."
+                confirmLabel="Delete"
+                variant="danger"
+                onConfirm={handleDeleteConfirm}
+                onClose={() => setTemplateToDelete(null)}
+            />
         </div>
     );
 };

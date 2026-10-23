@@ -29,3 +29,16 @@ export interface SyncProvider {
     pull(): Promise<SyncSnapshot | null>;
     push(snapshot: SyncSnapshot): Promise<void>;
 }
+
+/**
+ * The remote snapshot changed between this provider's pull() and push() (another device
+ * uploaded a newer snapshot in the meantime). The local merge from that sync run is already
+ * committed, so nothing is lost — the caller should surface the message and the user should
+ * re-run the sync to merge the newer remote data before pushing again.
+ */
+export class RemoteSnapshotChangedError extends Error {
+    constructor() {
+        super('The Drive snapshot changed while this device was syncing — run sync again to pick up the latest data.');
+        this.name = 'RemoteSnapshotChangedError';
+    }
+}

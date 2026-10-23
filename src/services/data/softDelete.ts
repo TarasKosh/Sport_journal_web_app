@@ -1,6 +1,7 @@
 import type { Table } from 'dexie';
 import { db } from '../../db/db';
 import { onlyActive } from '../../utils/entityFilters';
+import { nowMonotonic } from '../../data/clock';
 
 type IdRecord = { id?: number; uuid: string; deletedAt?: number; updatedAt: number };
 
@@ -20,7 +21,7 @@ async function softDeleteRows<T extends IdRecord>(
 
 /** Soft-delete a single set by local id */
 export async function softDeleteSet(setId: number): Promise<void> {
-    const now = Date.now();
+    const now = nowMonotonic();
     await db.sets.update(setId, { deletedAt: now, updatedAt: now });
 }
 
@@ -29,7 +30,7 @@ export async function softDeleteWorkoutExercise(workoutExerciseId: number): Prom
     const we = await db.workoutExercises.get(workoutExerciseId);
     if (!we || we.deletedAt != null) return;
 
-    const now = Date.now();
+    const now = nowMonotonic();
     await db.transaction('rw', [db.sets, db.workoutExercises], async () => {
         const sets = await db.sets.where('workoutExerciseId').equals(we.uuid).toArray();
         await softDeleteRows(db.sets, sets, now);
@@ -44,7 +45,7 @@ export async function softDeleteWorkout(workoutId: number): Promise<void> {
     const workout = await db.workouts.get(workoutId);
     if (!workout || workout.deletedAt != null) return;
 
-    const now = Date.now();
+    const now = nowMonotonic();
     await db.transaction('rw', [db.workouts, db.workoutExercises, db.sets], async () => {
         const workoutExercises = await db.workoutExercises
             .where('workoutId')
@@ -60,7 +61,8 @@ export async function softDeleteWorkout(workoutId: number): Promise<void> {
             }
         }
 
-        await db.workouts.update(workoutId, { deletedAt: now, updatedAt: now });
+        // `status` keeps deleted rows out of every indexed query.
+        await db.workouts.update(workoutId, { deletedAt: now, status: 'deleted', updatedAt: now });
     });
 }
 
@@ -74,7 +76,7 @@ export async function softDeleteExercise(exerciseId: number): Promise<void> {
     if (!exercise.isCustom) {
         throw new Error('Built-in exercises cannot be deleted.');
     }
-    const now = Date.now();
+    const now = nowMonotonic();
     await db.exercises.update(exerciseId, { deletedAt: now, updatedAt: now });
 }
 
@@ -85,7 +87,7 @@ export async function softDeleteWorkoutTemplate(templateId: number): Promise<voi
     if (!template.isCustom) {
         throw new Error('Built-in templates cannot be deleted.');
     }
-    const now = Date.now();
+    const now = nowMonotonic();
     await db.workoutTemplates.update(templateId, { deletedAt: now, updatedAt: now });
 }
 
@@ -100,7 +102,7 @@ export async function softDeleteWorkoutExerciseAndReorder(
     const we = await db.workoutExercises.get(workoutExerciseId);
     if (!we || we.deletedAt != null) return;
 
-    const now = Date.now();
+    const now = nowMonotonic();
     await db.transaction('rw', [db.sets, db.workoutExercises], async () => {
         const sets = await db.sets.where('workoutExerciseId').equals(we.uuid).toArray();
         await softDeleteRows(db.sets, sets, now);

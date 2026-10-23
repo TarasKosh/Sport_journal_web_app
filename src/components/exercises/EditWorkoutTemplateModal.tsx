@@ -1,12 +1,14 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { v4 as uuidv4 } from 'uuid';
 import { X, ArrowUp, ArrowDown, Trash2, Search, Plus } from 'lucide-react';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
+import { useExerciseIndex } from '../../hooks/useExerciseIndex';
+import { useToast } from '../../hooks/useToast';
 import { Button } from '../common/Button';
 
-import { db } from '../../db/db';
-import type { Exercise, WorkoutTemplate } from '../../types';
+import type { WorkoutTemplate } from '../../types';
+import { ExerciseRepository } from '../../data/repositories/ExerciseRepository';
+import { TemplateRepository } from '../../data/repositories/TemplateRepository';
 
 interface EditWorkoutTemplateModalProps {
     isOpen: boolean;
@@ -19,6 +21,7 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
     const [description, setDescription] = useState(template?.description || '');
     const [selectedExerciseIds, setSelectedExerciseIds] = useState<string[]>(template?.exercises || []);
     const [search, setSearch] = useState('');
+    const { showToast } = useToast();
 
     // Reset state when template prop changes (state-during-render pattern)
     const [prevTemplate, setPrevTemplate] = useState(template);
@@ -32,18 +35,10 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
     const containerRef = useRef<HTMLDivElement>(null);
     useFocusTrap(isOpen, containerRef);
 
-    const exercises = useLiveQuery(async () => {
-        const all = (await db.exercises.orderBy('name').toArray()).filter(e => e.deletedAt == null);
-        if (!search) return all;
-        const lower = search.toLowerCase();
-        return all.filter(e => e.name.toLowerCase().includes(lower) || e.muscleGroup.includes(lower));
-    }, [search]);
+    const exercises = useLiveQuery(() => ExerciseRepository.search(search), [search]);
 
-    const exerciseMap = useMemo(() => {
-        const map = new Map<string, Exercise>();
-        for (const ex of exercises || []) map.set(ex.uuid, ex);
-        return map;
-    }, [exercises]);
+    // Includes soft-deleted exercises so a previously selected row still resolves its name.
+    const exerciseMap = useExerciseIndex();
 
     const handleAddExercise = (id: string) => {
         setSelectedExerciseIds(prev => [...prev, id]);
@@ -70,29 +65,20 @@ export const EditWorkoutTemplateModal: React.FC<EditWorkoutTemplateModalProps> =
         if (selectedExerciseIds.length === 0) return;
 
         try {
-            const now = Date.now();
-            if (template && template.id) {
-                await db.workoutTemplates.update(template.id, {
-                    name: name.trim(),
-                    description: description.trim() || undefined,
-                    exercises: selectedExerciseIds,
-                    isCustom: true,
-                    updatedAt: now
-                });
+            const draft = {
+                name: name.trim(),
+                description: description.trim() || undefined,
+                exercises: selectedExerciseIds,
+            };
+            if (template && template.id != null) {
+                await TemplateRepository.update(template.id, { ...draft, isCustom: true });
             } else {
-                await db.workoutTemplates.add({
-                    uuid: uuidv4(),
-                    name: name.trim(),
-                    description: description.trim() || undefined,
-                    exercises: selectedExerciseIds,
-                    isCustom: true,
-                    updatedAt: now
-                } as WorkoutTemplate);
+                await TemplateRepository.create(draft);
             }
             onClose();
         } catch (e) {
             console.error('Failed to save template', e);
-            alert('Error saving template');
+            showToast('Error saving template', 'error');
         }
     };
 

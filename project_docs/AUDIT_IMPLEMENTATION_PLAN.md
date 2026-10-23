@@ -3,6 +3,9 @@
 Branch: `feat/audit-plan-implementation`  
 Source: multi-aspect audit (2026-07-08)
 
+> Follow-up work (architecture, data-access layer, performance, sync hardening) lives in
+> [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md).
+
 ## Goals
 
 Fix multi-device data integrity and wire incomplete settings so the product matches the domain model.

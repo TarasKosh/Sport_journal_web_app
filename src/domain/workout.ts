@@ -1,0 +1,143 @@
+import type { MassUnit, SetEntry, Workout, WorkoutStatus } from '../types';
+import { displayToKg } from '../utils/mass';
+
+/** Finite number or 0 — guards against NaN/undefined leaking out of form inputs and snapshots. */
+export function num(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Tonnage contribution of a single set.
+ * Matches the historical UI semantics: only sets with both weight and reps above zero count.
+ */
+export function tonnageOf(set: Pick<SetEntry, 'weight' | 'reps'>): number {
+    const weight = num(set.weight);
+    const reps = num(set.reps);
+    return weight > 0 && reps > 0 ? weight * reps : 0;
+}
+
+export type WorkoutAggregates = {
+    setsCount: number;
+    totalTonnage: number;
+};
+
+/**
+ * Tonnage is stored with 3 decimals. Every code path that writes a tonnage value into the
+ * aggregate cache must round through here, so incrementally applied deltas and full
+ * recounts agree bit-for-bit (raw float sums drift in the last decimals).
+ */
+export function roundTonnage(value: number): number {
+    return Math.round(value * 1000) / 1000;
+}
+
+/** Aggregates over an already filtered list of active sets. */
+export function summarizeSets(sets: Array<Pick<SetEntry, 'weight' | 'reps'>>): WorkoutAggregates {
+    let setsCount = 0;
+    let totalTonnage = 0;
+    for (const set of sets) {
+        setsCount += 1;
+        totalTonnage += tonnageOf(set);
+    }
+    return { setsCount, totalTonnage: roundTonnage(totalTonnage) };
+}
+
+/** Next free `order` value for a collection of ordered siblings. */
+export function nextOrder(records: Array<{ order?: number }>): number {
+    let next = 0;
+    for (const record of records) {
+        const order = typeof record.order === 'number' && Number.isFinite(record.order) ? record.order : -1;
+        if (order + 1 > next) next = order + 1;
+    }
+    return next;
+}
+
+/** Lifecycle status derived from timestamps — soft-delete wins over finished. */
+export function deriveStatus(workout: Pick<Workout, 'endedAt' | 'deletedAt'>): WorkoutStatus {
+    if (workout.deletedAt != null) return 'deleted';
+    if (workout.endedAt != null) return 'finished';
+    return 'active';
+}
+
+/** Local `YYYY-MM-DD` day string for a timestamp. */
+export function dayStringFromTimestamp(timestamp: number): string {
+    const date = new Date(timestamp);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+/** Duration in whole minutes, or null when the workout is not finished. */
+export function durationMinutes(workout: Pick<Workout, 'startedAt' | 'endedAt'>): number | null {
+    if (workout.endedAt == null || workout.startedAt == null) return null;
+    return Math.round((workout.endedAt - workout.startedAt) / 1000 / 60);
+}
+
+/** Metadata editor form state: raw display strings the user is typing. */
+export type WorkoutMetadataDraft = {
+    title: string;
+    notes: string;
+    mood: NonNullable<Workout['mood']>;
+    bodyWeight: string;
+    workoutDay: string;
+};
+
+/**
+ * Parses a raw body-weight display string from the metadata form.
+ * - `''` (field cleared) → `undefined` (the stored weight is cleared)
+ * - unparsable string → `null` (bad input: the field must be skipped, never written as NaN)
+ * - anything else → the parsed number
+ */
+export function parseDisplayWeight(display: string): number | null | undefined {
+    if (display === '') return undefined;
+    const parsed = parseFloat(display);
+    return Number.isNaN(parsed) ? null : parsed;
+}
+
+/**
+ * Patch written when the metadata form saves on blur (or an immediate control change).
+ * Every field is persisted as-is, but an unparsable body weight is skipped — never written
+ * as NaN, never cleared, and without blocking the other fields — mirroring the
+ * invalid-weight semantics of {@link buildCloseFlushPatch}.
+ */
+export function buildMetadataSavePatch(
+    fields: WorkoutMetadataDraft,
+    massUnit: MassUnit,
+    stored: Workout,
+): Partial<Workout> {
+    const patch: Partial<Workout> = {
+        title: fields.title.trim() || undefined,
+        notes: fields.notes.trim() || undefined,
+        mood: fields.mood,
+        workoutDay: fields.workoutDay.trim() || stored.workoutDay,
+    };
+    const parsedDisplay = parseDisplayWeight(fields.bodyWeight);
+    if (parsedDisplay !== null) {
+        patch.bodyWeight = parsedDisplay != null ? displayToKg(parsedDisplay, massUnit) : undefined;
+    }
+    return patch;
+}
+
+/**
+ * Patch written when the metadata form unmounts with unsaved edits (the modal was closed
+ * via Escape/backdrop, whose blur handlers never fire). Only fields that moved past the
+ * last persisted draft are included, so unchanged rows produce no write, and an unparsable
+ * body weight is skipped (never saved as NaN) instead of blocking the valid fields.
+ */
+export function buildCloseFlushPatch(
+    current: WorkoutMetadataDraft,
+    persisted: WorkoutMetadataDraft,
+    massUnit: MassUnit,
+    stored: Workout,
+): Partial<Workout> {
+    const patch: Partial<Workout> = {};
+    if (current.title !== persisted.title) patch.title = current.title.trim() || undefined;
+    if (current.notes !== persisted.notes) patch.notes = current.notes.trim() || undefined;
+    if (current.mood !== persisted.mood) patch.mood = current.mood;
+    if (current.bodyWeight !== persisted.bodyWeight) {
+        const parsedDisplay = parseDisplayWeight(current.bodyWeight);
+        if (parsedDisplay !== null) {
+            patch.bodyWeight = parsedDisplay != null ? displayToKg(parsedDisplay, massUnit) : undefined;
+        }
+    }
+    const day = current.workoutDay.trim() || stored.workoutDay;
+    if (day !== (persisted.workoutDay.trim() || stored.workoutDay)) patch.workoutDay = day;
+    return patch;
+}
