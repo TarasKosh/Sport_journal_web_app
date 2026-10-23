@@ -32,6 +32,11 @@ export default defineConfig([
             group: ['**/db/db', '**/db/db.ts', '../../db/*', '../../../db/*'],
             message: 'UI must not import the Dexie database. Use a repository from src/data/repositories instead.',
           },
+          {
+            group: ['dexie'],
+            message:
+              'UI must not import the dexie package directly (a private Dexie instance would bypass the repository boundary). Use a repository from src/data/repositories instead; useLiveQuery from dexie-react-hooks remains allowed.',
+          },
         ],
       }],
     },
