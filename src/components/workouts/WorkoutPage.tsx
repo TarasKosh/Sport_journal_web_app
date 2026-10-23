@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Button } from '../common/Button';
 import { Calendar, CheckCircle, Minus, Play, Plus, Trash2 } from 'lucide-react';
@@ -127,7 +127,19 @@ export const WorkoutPage: React.FC = () => {
     const prefill = lastBodyWeightKg != null ? String(kgToDisplay(lastBodyWeightKg, settings.massUnit)) : '';
     const startBodyWeight = bodyWeightOverride ?? prefill;
 
+    /**
+     * Double-tap guard: a second tap can land before the live query has emitted the
+     * new active workout, so the flag must be a synchronous ref — state alone would
+     * still see the stale value inside the same render batch. Without it two
+     * `status: 'active'` rows get inserted and one lingers invisible forever.
+     */
+    const startInFlightRef = useRef(false);
+    const [isStarting, setIsStarting] = useState(false);
+
     const handleStartWorkout = async () => {
+        if (startInFlightRef.current) return;
+        startInFlightRef.current = true;
+        setIsStarting(true);
         try {
             setFinishedWorkoutUuid(null);
             const now = Date.now();
@@ -141,6 +153,9 @@ export const WorkoutPage: React.FC = () => {
             setBodyWeightOverride(null);
         } catch (e) {
             console.error("Failed to start workout", e);
+        } finally {
+            startInFlightRef.current = false;
+            setIsStarting(false);
         }
     };
 
@@ -230,7 +245,7 @@ export const WorkoutPage: React.FC = () => {
                 </div>
             </div>
 
-            <Button size="lg" onClick={handleStartWorkout} fullWidth className="max-w-xs shadow-lg shadow-accent/20">
+            <Button size="lg" onClick={handleStartWorkout} disabled={isStarting} fullWidth className="max-w-xs shadow-lg shadow-accent/20">
                 Start
             </Button>
             <WorkoutDayPickerModal

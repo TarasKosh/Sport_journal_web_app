@@ -36,12 +36,14 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const [typed, setTyped] = useState('');
     const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     useFocusTrap(isOpen, containerRef);
 
     useEffect(() => {
         if (isOpen) {
             setTyped('');
             setBusy(false);
+            setError(null);
         }
     }, [isOpen]);
 
@@ -52,8 +54,14 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     const handleConfirm = async () => {
         if (!canConfirm || busy) return;
         setBusy(true);
+        setError(null);
         try {
             await onConfirm();
+        } catch (e) {
+            // Keep the dialog open so the user can retry or cancel, and surface the
+            // failure instead of letting it escape as an unhandled rejection.
+            console.error('ConfirmDialog: operation failed', e);
+            setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
         } finally {
             setBusy(false);
         }
@@ -68,9 +76,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             aria-labelledby="confirm-dialog-title"
             aria-describedby={description ? 'confirm-dialog-description' : undefined}
             onKeyDown={(event) => {
-                if (event.key === 'Escape') onClose();
+                if (event.key === 'Escape' && !busy) onClose();
             }}
-            onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+            onClick={(event) => { if (!busy && event.target === event.currentTarget) onClose(); }}
         >
             <div className="bg-bg-secondary w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-zoom-in">
                 <div className="flex items-start gap-3 p-4">
@@ -93,8 +101,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                     </div>
                     <button
                         onClick={onClose}
+                        disabled={busy}
                         aria-label="Close dialog"
-                        className="text-text-tertiary hover:text-text-primary transition-colors p-1"
+                        className="text-text-tertiary hover:text-text-primary transition-colors p-1 disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                         <X size={18} />
                     </button>
@@ -115,8 +124,14 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                     </div>
                 )}
 
+                {error && (
+                    <p role="alert" className="px-4 pb-2 text-sm text-danger">
+                        {error}
+                    </p>
+                )}
+
                 <div className="flex gap-2 p-4 pt-2">
-                    <Button variant="secondary" fullWidth onClick={onClose}>
+                    <Button variant="secondary" fullWidth onClick={onClose} disabled={busy}>
                         {cancelLabel}
                     </Button>
                     <Button

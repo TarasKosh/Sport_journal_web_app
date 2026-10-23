@@ -20,8 +20,10 @@ export const SettingsPage: React.FC = () => {
     };
 
     const handleResetDatabase = async () => {
-        setIsResetDialogOpen(false);
+        // Close only after the reset succeeds — on failure the ConfirmDialog stays open
+        // and surfaces the error, instead of silently leaving nothing to retry.
         await resetDatabase();
+        setIsResetDialogOpen(false);
         showToast('Database reset', 'info');
         window.location.reload();
     };

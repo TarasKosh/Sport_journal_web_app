@@ -115,3 +115,37 @@ describe('WorkoutPage finished-panel notes autosave', () => {
         }
     });
 });
+
+describe('WorkoutPage start guard', () => {
+    beforeEach(async () => {
+        // Same harness constraints as the notes tests: only the debounce timers are faked.
+        vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] });
+        await resetTestDatabase();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    /**
+     * Regression: two quick taps on Start used to insert two `status: 'active'` rows
+     * before the live query re-emitted — `getActive()` then returned an arbitrary one
+     * and the other lingered invisible forever.
+     */
+    it('creates a single active workout when Start is tapped twice before the active query re-emits', async () => {
+        render(<WorkoutPage />);
+        await settleUntil(() => screen.queryByRole('button', { name: 'Start' }) != null);
+
+        const startButton = screen.getByRole('button', { name: 'Start' });
+        // Both taps inside one task, before the live query can deliver the new workout.
+        await act(async () => {
+            fireEvent.click(startButton);
+            fireEvent.click(startButton);
+        });
+
+        // Wait until the active view has replaced the start screen, then count rows.
+        await settleUntil(() => screen.queryByRole('button', { name: 'Start' }) == null);
+
+        expect(await WorkoutRepository.listActive()).toHaveLength(1);
+    });
+});
