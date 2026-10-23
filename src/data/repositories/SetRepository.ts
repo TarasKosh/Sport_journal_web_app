@@ -5,7 +5,7 @@ import type { SetEntry } from '../../types';
 import { nextOrder, tonnageOf } from '../../domain/workout';
 import { onlyActive } from '../../utils/entityFilters';
 import { nowMonotonic } from '../clock';
-import { applyAggregateDelta } from '../aggregates';
+import { applyAggregateDelta, recountWorkout } from '../aggregates';
 
 export type NewSetInput = {
     weight?: number;
@@ -153,17 +153,55 @@ export const SetRepository = {
         });
     },
 
-    /** Patches a set, keeping the parent workout's tonnage cache in sync via a delta. */
+    /**
+     * Patches a set, keeping the parent workout's aggregate cache in sync.
+     * When the patch moves the set to a different workout exercise, the denormalized keys
+     * (`exerciseId`/`workoutId`/`performedAt`) are re-derived from the new parent and BOTH
+     * workouts are recounted (the old one loses the set, the new one gains it).
+     */
     async update(id: number, patch: Partial<SetEntry>): Promise<void> {
-        await db.transaction('rw', [db.sets, db.workouts], async () => {
+        await db.transaction('rw', [db.sets, db.workoutExercises, db.workouts], async () => {
             const before = await db.sets.get(id);
             if (!before) return;
-            const after: SetEntry = { ...before, ...patch, updatedAt: nowMonotonic() };
-            await db.sets.put(after);
 
-            const delta = tonnageOf(after) - tonnageOf(before);
-            if (delta !== 0 && after.workoutId) {
-                await applyAggregateDelta(after.workoutId, { totalTonnage: delta });
+            const targetUuid = patch.workoutExerciseId;
+            const movesParent = targetUuid !== undefined && targetUuid !== before.workoutExerciseId;
+
+            let after: SetEntry;
+            if (movesParent) {
+                const newParent = await db.workoutExercises
+                    .where('uuid')
+                    .equals(targetUuid)
+                    .first();
+                if (!newParent) {
+                    throw new Error(`Unknown workout exercise: ${targetUuid}`);
+                }
+                const newWorkout = await db.workouts.where('uuid').equals(newParent.workoutId).first();
+                const siblings = onlyActive(
+                    await db.sets.where('workoutExerciseId').equals(newParent.uuid).toArray(),
+                );
+                after = {
+                    ...before,
+                    ...patch,
+                    exerciseId: newParent.exerciseId,
+                    workoutId: newParent.workoutId,
+                    performedAt: newWorkout?.startedAt,
+                    order: patch.order ?? nextOrder(siblings),
+                    updatedAt: nowMonotonic(),
+                };
+                await db.sets.put(after);
+                if (before.workoutId && before.workoutId !== newParent.workoutId) {
+                    await recountWorkout(before.workoutId);
+                }
+                await recountWorkout(newParent.workoutId);
+            } else {
+                after = { ...before, ...patch, updatedAt: nowMonotonic() };
+                await db.sets.put(after);
+
+                const delta = tonnageOf(after) - tonnageOf(before);
+                if (delta !== 0 && after.workoutId) {
+                    await applyAggregateDelta(after.workoutId, { totalTonnage: delta });
+                }
             }
         });
     },
@@ -187,7 +225,9 @@ export const SetRepository = {
      * Most recent logged sets for an exercise (progress chart / quick history).
      * Uses the denormalized `exerciseId` index, so it reads a bounded window instead of
      * every workout plus one join query per workout. Falls back to the legacy join when the
-     * window holds no denormalized rows (data imported from an older client).
+     * window cannot fill the page — either it holds rows written before denormalization
+     * (imported from an older client) or soft-deleted rows crowd it and older active data
+     * lives beyond the window.
      */
     async recentByExercise(exerciseUuid: string, limit = 20): Promise<SetEntry[]> {
         const candidates = await db.sets
@@ -200,7 +240,7 @@ export const SetRepository = {
         const active = candidates
             .filter(set => set.deletedAt == null)
             .sort((a, b) => (a.performedAt ?? 0) - (b.performedAt ?? 0));
-        if (active.length > 0) return active.slice(-limit);
+        if (active.length >= limit) return active.slice(-limit);
 
         return recentByExerciseLegacy(exerciseUuid, limit);
     },

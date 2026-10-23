@@ -31,6 +31,10 @@ export const WorkoutExerciseRepository = {
 
     async add(workoutUuid: string, exerciseUuid: string): Promise<void> {
         await db.transaction('rw', [db.workoutExercises, db.workouts], async () => {
+            const workout = await db.workouts.where('uuid').equals(workoutUuid).first();
+            if (!workout) {
+                throw new Error(`Unknown workout: ${workoutUuid}`);
+            }
             const siblings = onlyActive(
                 await db.workoutExercises.where('workoutId').equals(workoutUuid).toArray(),
             );
@@ -51,6 +55,10 @@ export const WorkoutExerciseRepository = {
     async addMany(workoutUuid: string, exerciseUuids: string[]): Promise<void> {
         if (exerciseUuids.length === 0) return;
         await db.transaction('rw', [db.workoutExercises, db.workouts], async () => {
+            const workout = await db.workouts.where('uuid').equals(workoutUuid).first();
+            if (!workout) {
+                throw new Error(`Unknown workout: ${workoutUuid}`);
+            }
             const siblings = onlyActive(
                 await db.workoutExercises.where('workoutId').equals(workoutUuid).toArray(),
             );
@@ -93,14 +101,17 @@ export const WorkoutExerciseRepository = {
 
     /**
      * Soft-deletes the row and its sets, reorders the rest, then recounts the workout.
-     * The recount (rather than a hand-computed delta) keeps the aggregate cache correct
-     * even if a previous write was interrupted.
+     * Everything runs in ONE transaction: the delete helper opens a sub-transaction over
+     * a subset of this scope, so a crash between delete and recount can no longer leave
+     * the aggregate cache (setsCount/totalTonnage/exerciseCount) stale.
+     * The recount (rather than a hand-computed delta) keeps the cache correct even if a
+     * previous write was interrupted.
      */
     async remove(workoutExerciseUuid: string): Promise<void> {
-        const row = await db.workoutExercises.where('uuid').equals(workoutExerciseUuid).first();
-        if (!row || row.id == null) return;
-        await softDeleteWorkoutExerciseAndReorder(row.id, row.workoutId);
-        await db.transaction('rw', [db.workoutExercises, db.sets, db.workouts], async () => {
+        await db.transaction('rw', [db.sets, db.workoutExercises, db.workouts], async () => {
+            const row = await db.workoutExercises.where('uuid').equals(workoutExerciseUuid).first();
+            if (!row || row.id == null) return;
+            await softDeleteWorkoutExerciseAndReorder(row.id, row.workoutId);
             await recountWorkout(row.workoutId);
         });
     },

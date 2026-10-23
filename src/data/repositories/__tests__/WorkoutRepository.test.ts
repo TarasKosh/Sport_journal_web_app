@@ -41,6 +41,39 @@ describe('WorkoutRepository', () => {
     expect(page[0].endedAt).toBeTypeOf('number');
   });
 
+  /**
+   * Regression: `finish()` used to write `status: 'finished'` unconditionally, so finishing
+   * a soft-deleted workout resurrected it into every history/stats query.
+   */
+  it('does not resurrect a soft-deleted workout on finish', async () => {
+    const workout = await WorkoutRepository.start({ workoutDay: '2026-01-05' });
+    await WorkoutRepository.finish(workout.uuid);
+    await WorkoutRepository.softDelete(workout.uuid);
+    const beforeSecondFinish = await db.workouts.where('uuid').equals(workout.uuid).first();
+
+    const finished = await WorkoutRepository.finish(workout.uuid);
+
+    expect(finished).toBe(false);
+    expect(await WorkoutRepository.countFinished()).toBe(0);
+    expect(await WorkoutRepository.listFinishedPage(0, 10)).toHaveLength(0);
+
+    const stored = await db.workouts.where('uuid').equals(workout.uuid).first();
+    expect(stored?.status).toBe('deleted');
+    expect(stored?.deletedAt).toBeTypeOf('number');
+    // The row is left byte-for-byte untouched (no updatedAt churn for sync).
+    expect(stored?.updatedAt).toBe(beforeSecondFinish?.updatedAt);
+    expect(stored?.endedAt).toBe(beforeSecondFinish?.endedAt);
+  });
+
+  it('reports success when finishing a live workout', async () => {
+    const workout = await WorkoutRepository.start({ workoutDay: '2026-01-06' });
+
+    const finished = await WorkoutRepository.finish(workout.uuid);
+
+    expect(finished).toBe(true);
+    expect(await WorkoutRepository.countFinished()).toBe(1);
+  });
+
   it('pages finished workouts newest day first', async () => {
     for (const day of ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04']) {
       const workout = await WorkoutRepository.start({ workoutDay: day });

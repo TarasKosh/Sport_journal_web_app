@@ -142,4 +142,65 @@ describe('SetRepository', () => {
     await expect(SetRepository.add('we-missing', { weight: 1, reps: 1 })).rejects.toThrow(/Unknown workout exercise/);
     expect(await db.sets.count()).toBe(0);
   });
+
+  /**
+   * Regression: `update()` accepted a `workoutExerciseId` patch but kept the old
+   * denormalized keys and only adjusted the old workout's aggregates.
+   */
+  it('moving a set to another workout exercise re-derives keys and recounts both workouts', async () => {
+    const source = await seedWorkout({ startedAt: 1_000, day: '2026-01-01' });
+    const target = await seedWorkout({ startedAt: 2_000, day: '2026-01-02' });
+    const moved = await SetRepository.add(source.workoutExerciseUuid, { weight: 100, reps: 5 });
+    await SetRepository.add(target.workoutExerciseUuid, { weight: 40, reps: 5 });
+
+    await SetRepository.update(moved.id!, { workoutExerciseId: target.workoutExerciseUuid });
+
+    const stored = await db.sets.get(moved.id!);
+    expect(stored?.workoutExerciseId).toBe(target.workoutExerciseUuid);
+    expect(stored?.workoutId).toBe('w-2026-01-02');
+    expect(stored?.exerciseId).toBe('ex-bench');
+    expect(stored?.performedAt).toBe(2_000);
+
+    const sourceWorkout = await db.workouts.where('uuid').equals('w-2026-01-01').first();
+    expect(sourceWorkout?.setsCount).toBe(0);
+    expect(sourceWorkout?.totalTonnage).toBe(0);
+
+    const targetWorkout = await db.workouts.where('uuid').equals('w-2026-01-02').first();
+    expect(targetWorkout?.setsCount).toBe(2);
+    expect(targetWorkout?.totalTonnage).toBe(700);
+  });
+
+  it('throws when moving a set to an unknown workout exercise', async () => {
+    const source = await seedWorkout({ startedAt: 1_000, day: '2026-01-01' });
+    const set = await SetRepository.add(source.workoutExerciseUuid, { weight: 100, reps: 5 });
+
+    await expect(
+      SetRepository.update(set.id!, { workoutExerciseId: 'we-missing' }),
+    ).rejects.toThrow(/Unknown workout exercise/);
+
+    const stored = await db.sets.get(set.id!);
+    expect(stored?.workoutExerciseId).toBe(source.workoutExerciseUuid);
+  });
+
+  /**
+   * Regression: the indexed window only fell back to the join path when it held ZERO active
+   * rows. With many soft-deleted rows inside the window it silently returned fewer than
+   * `limit` rows even though older active data existed.
+   */
+  it('returns a full page of active rows when the window holds soft-deleted rows', async () => {
+    const oldest = await seedWorkout({ startedAt: 1_000, day: '2026-01-01' });
+    const middle = await seedWorkout({ startedAt: 2_000, day: '2026-01-02' });
+    const newest = await seedWorkout({ startedAt: 3_000, day: '2026-01-03' });
+
+    await SetRepository.add(oldest.workoutExerciseUuid, { weight: 10, reps: 1 });
+    await SetRepository.add(middle.workoutExerciseUuid, { weight: 20, reps: 1 });
+    // Five soft-deleted rows in the newest workout crowd the limit*3 window.
+    for (let i = 0; i < 5; i++) {
+      const set = await SetRepository.add(newest.workoutExerciseUuid, { weight: 90, reps: 1 });
+      await SetRepository.softDelete(set.id!);
+    }
+
+    const recent = await SetRepository.recentByExercise('ex-bench', 2);
+    expect(recent.map(set => set.weight)).toEqual([10, 20]);
+  });
 });

@@ -48,6 +48,22 @@ describe('WorkoutExerciseRepository', () => {
     expect(after.map(row => row.exerciseId)).toEqual(['ex-x', 'ex-y', 'ex-z', 'ex-w']);
   });
 
+  /**
+   * Regression: `add` used to insert the join row even when the parent workout did not
+   * exist, creating orphan rows that sync but are invisible to every query.
+   */
+  it('throws for an unknown workout instead of writing an orphan join row', async () => {
+    await expect(WorkoutExerciseRepository.add('w-missing', 'ex-a')).rejects.toThrow(/Unknown workout/);
+    expect(await db.workoutExercises.count()).toBe(0);
+  });
+
+  it('throws for an unknown workout in addMany before inserting any row', async () => {
+    await expect(WorkoutExerciseRepository.addMany('w-missing', ['ex-a', 'ex-b'])).rejects.toThrow(
+      /Unknown workout/,
+    );
+    expect(await db.workoutExercises.count()).toBe(0);
+  });
+
   /** Regression: the swap used two independent updates, so a reader could see duplicate orders. */
   it('swaps neighbours atomically', async () => {
     await WorkoutExerciseRepository.add('w-1', 'ex-a');
@@ -98,5 +114,30 @@ describe('WorkoutExerciseRepository', () => {
 
     const sets = await db.sets.where('workoutExerciseId').equals(middle.uuid).toArray();
     expect(sets[0].deletedAt).toBeTypeOf('number');
+  });
+
+  /** The aggregate cache must reflect exactly the surviving rows after a removal. */
+  it('remove() leaves the workout aggregates consistent for the surviving exercises', async () => {
+    await WorkoutExerciseRepository.add('w-1', 'ex-a');
+    await WorkoutExerciseRepository.add('w-1', 'ex-b');
+    await WorkoutExerciseRepository.add('w-1', 'ex-c');
+
+    const rows = await WorkoutExerciseRepository.listByWorkout('w-1');
+    await SetRepository.add(rows[0].uuid, { weight: 60, reps: 5 }); // 300
+    await SetRepository.add(rows[1].uuid, { weight: 100, reps: 5 }); // 500
+    await SetRepository.add(rows[1].uuid, { weight: 100, reps: 3 }); // 300
+
+    // Removing a middle exercise with sets must recompute counts AND tonnage from scratch.
+    await WorkoutExerciseRepository.remove(rows[1].uuid);
+
+    const workout = await db.workouts.where('uuid').equals('w-1').first();
+    expect(workout?.exerciseCount).toBe(2);
+    expect(workout?.setsCount).toBe(1);
+    expect(workout?.totalTonnage).toBe(300);
+
+    // A stale delta (rather than a recount) would have left the tonnage at 1100.
+    const remaining = await WorkoutExerciseRepository.listByWorkout('w-1');
+    expect(remaining.map(row => row.exerciseId)).toEqual(['ex-a', 'ex-c']);
+    expect(remaining.map(row => row.order)).toEqual([0, 1]);
   });
 });

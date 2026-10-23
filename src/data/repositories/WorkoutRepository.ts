@@ -80,13 +80,22 @@ export const WorkoutRepository = {
         return workout;
     },
 
-    async finish(uuid: string): Promise<void> {
+    /**
+     * Finishes an active workout. A soft-deleted workout is left untouched (returning
+     * `false` from the modify callback skips the write) — writing `status: 'finished'`
+     * unconditionally used to resurrect it into every history/stats query.
+     */
+    async finish(uuid: string): Promise<boolean> {
         const now = nowMonotonic();
+        let finished = false;
         await db.workouts.where('uuid').equals(uuid).modify((workout: Workout) => {
+            if (workout.deletedAt != null) return false;
             workout.endedAt = now;
             workout.status = 'finished';
             workout.updatedAt = now;
+            finished = true;
         });
+        return finished;
     },
 
     /** Patches user-authored metadata; derived fields are recomputed by `normalizeWorkout`. */
