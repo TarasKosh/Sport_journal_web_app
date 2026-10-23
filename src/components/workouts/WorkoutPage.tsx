@@ -7,6 +7,7 @@ import { WorkoutDayPickerModal } from './WorkoutDayPickerModal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { toDayString, workoutDayToDate } from '../../utils/dateUtils';
 import { useSettings } from '../../hooks/useSettings';
+import { useDebouncedWriter } from '../../hooks/useDebouncedWriter';
 import { displayToKg, kgToDisplay, massUnitLabel } from '../../utils/mass';
 import { WorkoutRepository } from '../../data/repositories/WorkoutRepository';
 import type { Workout } from '../../types';
@@ -19,8 +20,22 @@ const WorkoutFinishedPanel: React.FC<{ workout: Workout; onDone: () => void }> =
     const [notes, setNotes] = useState(workout.notes || '');
     const [isDiscardOpen, setIsDiscardOpen] = useState(false);
 
-    const handleSaveFinished = async () => {
-        await WorkoutRepository.updateMetadata(workout.uuid, { notes: notes.trim() || undefined });
+    /**
+     * Notes autosave (same pattern as SetItem): typing schedules a debounced write, blur
+     * and unmount/tab-hide flush it, so navigating away without the button never loses
+     * the text. Writes are skipped when the text matches the stored row.
+     */
+    const persistNotes = (value: string) => {
+        const trimmed = value.trim() || undefined;
+        if ((workout.notes || undefined) === trimmed) return;
+        void WorkoutRepository.updateMetadata(workout.uuid, { notes: trimmed })
+            .catch(e => console.error('Failed to save workout notes', e));
+    };
+    const writer = useDebouncedWriter(persistNotes, 500);
+
+    const handleSaveFinished = () => {
+        // Notes are already autosaved; flush anything still inside the debounce window.
+        writer.flush();
         onDone();
     };
 
@@ -48,7 +63,11 @@ const WorkoutFinishedPanel: React.FC<{ workout: Workout; onDone: () => void }> =
                         className="w-full px-4 py-3 rounded-xl bg-bg-secondary border border-border/60 focus:border-accent outline-none text-text-primary resize-none"
                         placeholder="How did you feel today?"
                         value={notes}
-                        onChange={e => setNotes(e.target.value)}
+                        onChange={e => {
+                            setNotes(e.target.value);
+                            writer.schedule(e.target.value);
+                        }}
+                        onBlur={writer.flush}
                     />
                 </div>
             </div>
