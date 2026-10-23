@@ -427,6 +427,68 @@ describe('SyncManager.mergeSnapshot', () => {
     expect(await db.sets.count()).toBe(0);
   });
 
+  /**
+   * Regression: sets used to be orphan-filtered against db.workoutExercises BEFORE the
+   * snapshot's workout-exercises were merged, so a set whose parent arrived in the same
+   * snapshot was dropped. On a fresh device (empty DB) that discarded every set.
+   */
+  it('persists sets whose parent workout-exercises arrive in the same snapshot', async () => {
+    const manager = new SyncManager(noopProvider);
+
+    const report = await manager.mergeSnapshot(
+      emptySnapshot({
+        data: {
+          settings: [],
+          exercises: [
+            { uuid: 'ex-fresh', name: 'Fresh Press', muscleGroup: 'chest', isCustom: true, aliases: [], variations: [], updatedAt: 10 },
+          ],
+          workouts: [
+            { uuid: 'w-fresh', startedAt: 1000, workoutDay: '2026-01-01', endedAt: 2000, updatedAt: 10 },
+          ],
+          workoutExercises: [
+            { uuid: 'we-fresh', workoutId: 'w-fresh', exerciseId: 'ex-fresh', order: 0, updatedAt: 10 },
+          ],
+          sets: [
+            { uuid: 'set-fresh', workoutExerciseId: 'we-fresh', order: 0, weight: 100, reps: 5, isWarmup: false, isFailure: false, updatedAt: 10 },
+          ],
+        },
+      }),
+    );
+
+    expect(report.skippedOrphans).toBe(0);
+    const set = await db.sets.where('uuid').equals('set-fresh').first();
+    expect(set).toBeTruthy();
+    // Denormalized parent keys are filled in from the snapshot's workout-exercise.
+    expect(set?.workoutId).toBe('w-fresh');
+    expect(set?.exerciseId).toBe('ex-fresh');
+
+    const workout = await db.workouts.where('uuid').equals('w-fresh').first();
+    expect(workout?.setsCount).toBe(1);
+  });
+
+  it('still skips a set whose parent workout-exercise is unknown everywhere', async () => {
+    const manager = new SyncManager(noopProvider);
+
+    const report = await manager.mergeSnapshot(
+      emptySnapshot({
+        data: {
+          settings: [],
+          exercises: [],
+          workouts: [
+            { uuid: 'w-known', startedAt: 1000, workoutDay: '2026-01-01', updatedAt: 10 },
+          ],
+          workoutExercises: [],
+          sets: [
+            { uuid: 'set-unknown-parent', workoutExerciseId: 'we-nowhere', order: 0, weight: 100, reps: 5, isWarmup: false, isFailure: false, updatedAt: 10 },
+          ],
+        },
+      }),
+    );
+
+    expect(report.skippedOrphans).toBe(1);
+    expect(await db.sets.count()).toBe(0);
+  });
+
   it('recounts workout aggregates for merged sets', async () => {
     await db.workouts.add({
       uuid: 'w-agg',

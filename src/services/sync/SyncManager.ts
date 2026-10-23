@@ -175,6 +175,10 @@ export class SyncManager {
                     db.workoutExercises,
                     [...new Set(remoteSets.map(row => row.workoutExerciseId))],
                 );
+                // A set's parent may be new in this very snapshot (db.workoutExercises is merged
+                // only after this filter), so parents that survived the workout-level orphan
+                // filter count as known too. Without this, a fresh device dropped every set.
+                for (const row of workoutExercises) knownWorkoutExerciseUuids.add(row.uuid);
                 const sets = remoteSets.filter(row => knownWorkoutExerciseUuids.has(row.workoutExerciseId));
                 report.skippedOrphans += remoteSets.length - sets.length;
 
