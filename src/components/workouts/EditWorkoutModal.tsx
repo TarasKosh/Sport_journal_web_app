@@ -9,8 +9,8 @@ import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { useSettings } from '../../hooks/useSettings';
 import { useWorkoutEditor } from '../../hooks/useWorkoutEditor';
 import { WorkoutRepository } from '../../data/repositories/WorkoutRepository';
-import { buildCloseFlushPatch, type WorkoutMetadataDraft } from '../../domain/workout';
-import { displayToKg, kgToDisplay, massUnitLabel } from '../../utils/mass';
+import { buildCloseFlushPatch, buildMetadataSavePatch, parseDisplayWeight, type WorkoutMetadataDraft } from '../../domain/workout';
+import { kgToDisplay, massUnitLabel } from '../../utils/mass';
 
 interface EditWorkoutModalProps {
   workout: Workout;
@@ -45,6 +45,9 @@ const MetadataForm: React.FC<MetadataFormProps> = ({ workout, massUnit, title, o
   );
   const [workoutDay, setWorkoutDay] = useState(workout.workoutDay || '');
 
+  // A non-empty, unparsable weight string is flagged on the input and skipped on save.
+  const bodyWeightInvalid = parseDisplayWeight(bodyWeight) === null;
+
   // Latest field values and the last values successfully persisted, for the unmount flush
   // below. Context (unit + row) is captured too: values typed so far belong to that unit.
   const latestRef = useRef<WorkoutMetadataDraft>({ title, notes, mood, bodyWeight, workoutDay });
@@ -55,26 +58,19 @@ const MetadataForm: React.FC<MetadataFormProps> = ({ workout, massUnit, title, o
     flushContextRef.current = { massUnit, workout };
   });
 
+  /**
+   * Persists the current draft. An unparsable body weight is skipped (never written as
+   * NaN, never cleared) instead of aborting the whole save — the other fields still go
+   * through, and the input is flagged invalid below.
+   */
   const save = async (overrides: Partial<WorkoutMetadataDraft> = {}) => {
     const fields: WorkoutMetadataDraft = { title, notes, mood, bodyWeight, workoutDay, ...overrides };
-    const parsedDisplay = fields.bodyWeight !== '' ? parseFloat(fields.bodyWeight) : undefined;
-    if (fields.bodyWeight !== '' && Number.isNaN(parsedDisplay)) return;
-
-    const bodyWeightKg = parsedDisplay != null ? displayToKg(parsedDisplay, massUnit) : undefined;
-    const day = fields.workoutDay.trim() || workout.workoutDay;
-    const trimmedTitle = fields.title.trim() || undefined;
-    const trimmedNotes = fields.notes.trim() || undefined;
+    const patch = buildMetadataSavePatch(fields, massUnit, workout);
 
     try {
-      await WorkoutRepository.updateMetadata(workout.uuid, {
-        title: trimmedTitle,
-        notes: trimmedNotes,
-        mood: fields.mood,
-        bodyWeight: bodyWeightKg,
-        workoutDay: day,
-      });
+      await WorkoutRepository.updateMetadata(workout.uuid, patch);
       persistedRef.current = fields;
-      onSaved({ ...workout, title: trimmedTitle, notes: trimmedNotes, mood: fields.mood, bodyWeight: bodyWeightKg, workoutDay: day });
+      onSaved({ ...workout, ...patch });
     } catch (e) {
       console.error('Failed to save workout metadata', e);
     }
@@ -133,13 +129,16 @@ const MetadataForm: React.FC<MetadataFormProps> = ({ workout, massUnit, title, o
           Body Weight ({massUnitLabel(massUnit).toLowerCase()})
         </label>
         <input
-          className="w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 border-white/30 focus:border-white/50 focus:outline-none text-sm"
+          className={`w-full px-3 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white placeholder-white/60 border-2 focus:outline-none text-sm ${
+            bodyWeightInvalid ? 'border-danger focus:border-danger' : 'border-white/30 focus:border-white/50'
+          }`}
           type="number"
           min="0"
           step="0.01"
           value={bodyWeight}
           onChange={e => setBodyWeight(e.target.value)}
           onBlur={() => save()}
+          aria-invalid={bodyWeightInvalid || undefined}
           placeholder="0"
         />
       </div>
@@ -192,6 +191,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
 
   const containerRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const confirmDeleteTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useFocusTrap(isOpen, containerRef);
 
   // The caller may swap the workout prop without unmounting; re-seed the header title then.
@@ -203,6 +203,7 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (confirmDeleteTimerRef.current) clearTimeout(confirmDeleteTimerRef.current);
     };
   }, []);
 
@@ -218,7 +219,10 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({ workout, isO
   const deleteExercise = async (workoutExerciseUuid: string) => {
     if (confirmDeleteExerciseUuid !== workoutExerciseUuid) {
       setConfirmDeleteExerciseUuid(workoutExerciseUuid);
-      setTimeout(() => setConfirmDeleteExerciseUuid(null), 3000);
+      // Replace any pending timer: an untracked one armed for a previous exercise would
+      // fire first and cancel this newer confirmation early. Cleared on unmount above.
+      if (confirmDeleteTimerRef.current) clearTimeout(confirmDeleteTimerRef.current);
+      confirmDeleteTimerRef.current = setTimeout(() => setConfirmDeleteExerciseUuid(null), 3000);
       return;
     }
     await removeExercise(workoutExerciseUuid);

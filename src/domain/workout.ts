@@ -80,6 +80,42 @@ export type WorkoutMetadataDraft = {
 };
 
 /**
+ * Parses a raw body-weight display string from the metadata form.
+ * - `''` (field cleared) → `undefined` (the stored weight is cleared)
+ * - unparsable string → `null` (bad input: the field must be skipped, never written as NaN)
+ * - anything else → the parsed number
+ */
+export function parseDisplayWeight(display: string): number | null | undefined {
+    if (display === '') return undefined;
+    const parsed = parseFloat(display);
+    return Number.isNaN(parsed) ? null : parsed;
+}
+
+/**
+ * Patch written when the metadata form saves on blur (or an immediate control change).
+ * Every field is persisted as-is, but an unparsable body weight is skipped — never written
+ * as NaN, never cleared, and without blocking the other fields — mirroring the
+ * invalid-weight semantics of {@link buildCloseFlushPatch}.
+ */
+export function buildMetadataSavePatch(
+    fields: WorkoutMetadataDraft,
+    massUnit: MassUnit,
+    stored: Workout,
+): Partial<Workout> {
+    const patch: Partial<Workout> = {
+        title: fields.title.trim() || undefined,
+        notes: fields.notes.trim() || undefined,
+        mood: fields.mood,
+        workoutDay: fields.workoutDay.trim() || stored.workoutDay,
+    };
+    const parsedDisplay = parseDisplayWeight(fields.bodyWeight);
+    if (parsedDisplay !== null) {
+        patch.bodyWeight = parsedDisplay != null ? displayToKg(parsedDisplay, massUnit) : undefined;
+    }
+    return patch;
+}
+
+/**
  * Patch written when the metadata form unmounts with unsaved edits (the modal was closed
  * via Escape/backdrop, whose blur handlers never fire). Only fields that moved past the
  * last persisted draft are included, so unchanged rows produce no write, and an unparsable
@@ -96,8 +132,8 @@ export function buildCloseFlushPatch(
     if (current.notes !== persisted.notes) patch.notes = current.notes.trim() || undefined;
     if (current.mood !== persisted.mood) patch.mood = current.mood;
     if (current.bodyWeight !== persisted.bodyWeight) {
-        const parsedDisplay = current.bodyWeight !== '' ? parseFloat(current.bodyWeight) : undefined;
-        if (parsedDisplay == null || !Number.isNaN(parsedDisplay)) {
+        const parsedDisplay = parseDisplayWeight(current.bodyWeight);
+        if (parsedDisplay !== null) {
             patch.bodyWeight = parsedDisplay != null ? displayToKg(parsedDisplay, massUnit) : undefined;
         }
     }
