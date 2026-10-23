@@ -1,4 +1,5 @@
-import type { SetEntry, Workout, WorkoutStatus } from '../types';
+import type { MassUnit, SetEntry, Workout, WorkoutStatus } from '../types';
+import { displayToKg } from '../utils/mass';
 
 /** Finite number or 0 — guards against NaN/undefined leaking out of form inputs and snapshots. */
 export function num(value: unknown): number {
@@ -58,4 +59,40 @@ export function dayStringFromTimestamp(timestamp: number): string {
 export function durationMinutes(workout: Pick<Workout, 'startedAt' | 'endedAt'>): number | null {
     if (workout.endedAt == null || workout.startedAt == null) return null;
     return Math.round((workout.endedAt - workout.startedAt) / 1000 / 60);
+}
+
+/** Metadata editor form state: raw display strings the user is typing. */
+export type WorkoutMetadataDraft = {
+    title: string;
+    notes: string;
+    mood: NonNullable<Workout['mood']>;
+    bodyWeight: string;
+    workoutDay: string;
+};
+
+/**
+ * Patch written when the metadata form unmounts with unsaved edits (the modal was closed
+ * via Escape/backdrop, whose blur handlers never fire). Only fields that moved past the
+ * last persisted draft are included, so unchanged rows produce no write, and an unparsable
+ * body weight is skipped (never saved as NaN) instead of blocking the valid fields.
+ */
+export function buildCloseFlushPatch(
+    current: WorkoutMetadataDraft,
+    persisted: WorkoutMetadataDraft,
+    massUnit: MassUnit,
+    stored: Workout,
+): Partial<Workout> {
+    const patch: Partial<Workout> = {};
+    if (current.title !== persisted.title) patch.title = current.title.trim() || undefined;
+    if (current.notes !== persisted.notes) patch.notes = current.notes.trim() || undefined;
+    if (current.mood !== persisted.mood) patch.mood = current.mood;
+    if (current.bodyWeight !== persisted.bodyWeight) {
+        const parsedDisplay = current.bodyWeight !== '' ? parseFloat(current.bodyWeight) : undefined;
+        if (parsedDisplay == null || !Number.isNaN(parsedDisplay)) {
+            patch.bodyWeight = parsedDisplay != null ? displayToKg(parsedDisplay, massUnit) : undefined;
+        }
+    }
+    const day = current.workoutDay.trim() || stored.workoutDay;
+    if (day !== (persisted.workoutDay.trim() || stored.workoutDay)) patch.workoutDay = day;
+    return patch;
 }

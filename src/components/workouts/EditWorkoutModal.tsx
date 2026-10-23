@@ -9,6 +9,7 @@ import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { useSettings } from '../../hooks/useSettings';
 import { useWorkoutEditor } from '../../hooks/useWorkoutEditor';
 import { WorkoutRepository } from '../../data/repositories/WorkoutRepository';
+import { buildCloseFlushPatch, type WorkoutMetadataDraft } from '../../domain/workout';
 import { displayToKg, kgToDisplay, massUnitLabel } from '../../utils/mass';
 
 interface EditWorkoutModalProps {
@@ -18,14 +19,6 @@ interface EditWorkoutModalProps {
   /** Called after every successful metadata save. Closing the modal is the caller's choice. */
   onSaved?: (updated: Workout) => void;
 }
-
-type MetadataDraft = {
-  title: string;
-  notes: string;
-  mood: NonNullable<Workout['mood']>;
-  bodyWeight: string;
-  workoutDay: string;
-};
 
 interface MetadataFormProps {
   workout: Workout;
@@ -52,8 +45,18 @@ const MetadataForm: React.FC<MetadataFormProps> = ({ workout, massUnit, title, o
   );
   const [workoutDay, setWorkoutDay] = useState(workout.workoutDay || '');
 
-  const save = async (overrides: Partial<MetadataDraft> = {}) => {
-    const fields: MetadataDraft = { title, notes, mood, bodyWeight, workoutDay, ...overrides };
+  // Latest field values and the last values successfully persisted, for the unmount flush
+  // below. Context (unit + row) is captured too: values typed so far belong to that unit.
+  const latestRef = useRef<WorkoutMetadataDraft>({ title, notes, mood, bodyWeight, workoutDay });
+  const persistedRef = useRef<WorkoutMetadataDraft>({ title, notes, mood, bodyWeight, workoutDay });
+  const flushContextRef = useRef({ massUnit, workout });
+  useEffect(() => {
+    latestRef.current = { title, notes, mood, bodyWeight, workoutDay };
+    flushContextRef.current = { massUnit, workout };
+  });
+
+  const save = async (overrides: Partial<WorkoutMetadataDraft> = {}) => {
+    const fields: WorkoutMetadataDraft = { title, notes, mood, bodyWeight, workoutDay, ...overrides };
     const parsedDisplay = fields.bodyWeight !== '' ? parseFloat(fields.bodyWeight) : undefined;
     if (fields.bodyWeight !== '' && Number.isNaN(parsedDisplay)) return;
 
@@ -70,11 +73,29 @@ const MetadataForm: React.FC<MetadataFormProps> = ({ workout, massUnit, title, o
         bodyWeight: bodyWeightKg,
         workoutDay: day,
       });
+      persistedRef.current = fields;
       onSaved({ ...workout, title: trimmedTitle, notes: trimmedNotes, mood: fields.mood, bodyWeight: bodyWeightKg, workoutDay: day });
     } catch (e) {
       console.error('Failed to save workout metadata', e);
     }
   };
+
+  /**
+   * Flush pending edits on unmount. Closing the modal (Escape, backdrop, X, Close button)
+   * removes the form from the DOM before React fires the inputs' pending blur handlers, so
+   * without this the last keystrokes would be lost. `onSaved` is not called: the modal is
+   * going away, and live queries refresh whatever the caller shows.
+   */
+  useEffect(() => {
+    return () => {
+      const { massUnit: unit, workout: row } = flushContextRef.current;
+      const patch = buildCloseFlushPatch(latestRef.current, persistedRef.current, unit, row);
+      if (Object.keys(patch).length === 0) return;
+      void WorkoutRepository.updateMetadata(row.uuid, patch).catch(e => {
+        console.error('Failed to flush workout metadata on close', e);
+      });
+    };
+  }, []);
 
   return (
     <div className="px-4 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
