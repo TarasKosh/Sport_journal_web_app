@@ -23,6 +23,8 @@ type Draft = {
     failureRep: string;
 };
 
+const DRAFT_KEYS: Array<keyof Draft> = ['weight', 'reps', 'intensity', 'failureRep'];
+
 /** Display strings for a stored set — the single place that converts kg → display unit. */
 function draftFromEntry(entry: SetEntry, massUnit: MassUnit, useRir: boolean): Draft {
     return {
@@ -103,6 +105,8 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
 
     const [draft, setDraftState] = useState<Draft>(() => draftFromEntry(entry, massUnit, useRir));
     const draftRef = React.useRef(draft);
+    // The draft exactly as derived from the stored row, before any user edit (see resync below).
+    const [baseDraft, setBaseDraft] = useState<Draft>(() => draftFromEntry(entry, massUnit, useRir));
     const [variation, setVariation] = useState(entry.variation || '');
     const [side, setSide] = useState<'left' | 'right' | undefined>(entry.side);
     const [isFailure, setIsFailure] = useState(entry.isFailure);
@@ -150,11 +154,32 @@ export const SetItem: React.FC<SetItemProps> = React.memo(({ entry, index, isUni
 
     // Re-derive the display strings when the stored row or the unit/RPE preference changes
     // (e.g. a sync merge or a settings change). Documented "adjust state during render" pattern.
+    // Un-persisted user edits must survive an entry re-emission: the row often re-emits
+    // because a sibling field (failure toggle, side, variation) was written immediately
+    // while a typed value is still inside the 500 ms debounce. Fields whose pending draft
+    // differs from the last stored-derived base are user intent and are merged over the
+    // fresh base; preference changes carry no pending intent (the strings are in the old
+    // unit/scale) and re-derive cleanly.
     const resyncKey = `${entry.weight}|${entry.reps}|${entry.rpe ?? ''}|${entry.rir ?? ''}|${entry.failureRep ?? ''}|${massUnit}|${useRir}`;
+    const prefKey = `${massUnit}|${useRir}`;
     const [prevResyncKey, setPrevResyncKey] = useState(resyncKey);
+    const [prevPrefKey, setPrevPrefKey] = useState(prefKey);
     if (resyncKey !== prevResyncKey) {
         setPrevResyncKey(resyncKey);
-        setDraftState(draftFromEntry(entry, massUnit, useRir));
+        setPrevPrefKey(prefKey);
+        const base = draftFromEntry(entry, massUnit, useRir);
+        const pending = prefKey === prevPrefKey ? writer.pending() : undefined;
+        let next = base;
+        if (pending) {
+            // baseDraft still holds the previous stored-derived base here: it is only
+            // updated inside this branch, after the intent comparison.
+            next = { ...base };
+            for (const key of DRAFT_KEYS) {
+                if (pending[key] !== baseDraft[key]) next[key] = pending[key];
+            }
+        }
+        setDraftState(next);
+        setBaseDraft(base);
     }
 
     // Keep the event-handler mirror in sync with the committed state (refs are never

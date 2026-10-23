@@ -37,6 +37,15 @@ export function useDebouncedWriter<T>(
         void persistRef.current(value);
     }, []);
 
+    /**
+     * The value scheduled but not yet persisted, if any. Lets a caller tell un-persisted
+     * user intent apart from freshly stored values when a source row re-emits mid-debounce.
+     */
+    const pending = useCallback((): T | undefined => {
+        if (!pendingRef.current) return undefined;
+        return valueRef.current as T;
+    }, []);
+
     const schedule = useCallback((value: T) => {
         valueRef.current = value;
         pendingRef.current = true;
@@ -62,5 +71,5 @@ export function useDebouncedWriter<T>(
 
     useEffect(() => cancelTimer, []);
 
-    return { schedule, flush };
+    return { schedule, flush, pending };
 }
